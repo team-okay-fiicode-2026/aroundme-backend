@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aroundme-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aroundme
+      POSTGRES_USER: aroundme
+      POSTGRES_PASSWORD: aroundme
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aroundme -d aroundme"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+    container_name: aroundme-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_PORT: ${APP_PORT:-8080}
+      ENV: ${ENV:-development}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8081,http://localhost:19006,http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:-change-me-locally}
+      DATABASE_URL: postgres://aroundme:aroundme@postgres:5432/aroundme?sslmode=disable
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:
