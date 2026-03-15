@@ -1,4 +1,4 @@
-package db
+package database
 
 import (
 	"context"
@@ -27,6 +27,10 @@ func NewPostgres(ctx context.Context, databaseURL string) (*Postgres, error) {
 
 func (p *Postgres) Ping(ctx context.Context) error {
 	return p.pool.Ping(ctx)
+}
+
+func (p *Postgres) Pool() *pgxpool.Pool {
+	return p.pool
 }
 
 func (p *Postgres) Close() {

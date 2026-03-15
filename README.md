@@ -1,6 +1,19 @@
 # aroundme-backend
 
-Basic Go API with Fiber, gqlgen prepared, and PostgreSQL connection for aroundme.
+Basic Go API with Fiber and PostgreSQL connection for aroundme.
+
+## Project structure
+
+The backend now follows a pragmatic clean-architecture split:
+
+- `internal/delivery/http`: Fiber handlers and route registration
+- `internal/usecase`: business rules and orchestration
+- `internal/repository`: repository interfaces
+- `internal/repository/postgres`: PostgreSQL adapters
+- `internal/entity`: core domain entities
+- `internal/model`: use-case input and output models
+- `internal/platform/database`: database connection bootstrap
+- `internal/app`: application wiring/bootstrap
 
 ## Run locally without Docker
 
@@ -28,9 +41,3 @@ This starts Postgres on `localhost:5432` and the API on `localhost:8080`.
 ```bash
 curl http://localhost:8080/health
 ```
-
-## gqlgen preparation
-
-- `POST /graphql`
-- schema in `internal/graph/schema.graphqls`
-- placeholder query: `ping`

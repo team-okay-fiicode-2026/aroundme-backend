@@ -3,27 +3,34 @@ package config
 import (
 	"errors"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	AppPort     string
-	DatabaseURL string
-	JWTSecret   string
-	CORSOrigin  string
-	Env         string
+	AppPort               string
+	DatabaseURL           string
+	CORSOrigin            string
+	Env                   string
+	AccessTokenTTLMinutes int
+	RefreshTokenTTLHours  int
+	AllowDevSocialAuth    bool
 }
 
 func Load() (Config, error) {
 	_ = godotenv.Load()
 
+	env := getEnv("ENV", "development")
+
 	cfg := Config{
-		AppPort:     getEnv("APP_PORT", "8080"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		JWTSecret:   os.Getenv("JWT_SECRET"),
-		CORSOrigin:  getEnv("CORS_ORIGIN", "http://localhost:8081,http://localhost:19006,http://localhost:3000"),
-		Env:         getEnv("ENV", "development"),
+		AppPort:               getEnv("APP_PORT", "8080"),
+		DatabaseURL:           getEnv("DATABASE_URL", ""),
+		CORSOrigin:            getEnv("CORS_ORIGIN", "http://localhost:8081,http://localhost:19006,http://localhost:3000"),
+		Env:                   env,
+		AccessTokenTTLMinutes: getEnvInt("ACCESS_TOKEN_TTL_MINUTES", 15),
+		RefreshTokenTTLHours:  getEnvInt("REFRESH_TOKEN_TTL_HOURS", 24*30),
+		AllowDevSocialAuth:    getEnvBool("ALLOW_DEV_SOCIAL_AUTH", env == "development"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -40,4 +47,32 @@ func getEnv(key, fallback string) string {
 	}
 
 	return value
+}
+
+func getEnvInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }
