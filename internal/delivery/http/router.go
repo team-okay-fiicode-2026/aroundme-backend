@@ -7,7 +7,13 @@ import (
 	"github.com/aroundme/aroundme-backend/internal/usecase"
 )
 
-func Register(app *fiber.App, authUseCase usecase.AuthUseCase, db *database.Postgres) {
+func Register(
+	app *fiber.App,
+	authUseCase usecase.AuthUseCase,
+	profileUseCase usecase.ProfileUseCase,
+	db *database.Postgres,
+) {
 	NewHealthHandler(db).Register(app)
 	NewAuthHandler(authUseCase).Register(app.Group("/auth"))
+	NewProfileHandler(profileUseCase).Register(app.Group("/profile", AuthRequired(authUseCase)))
 }

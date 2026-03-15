@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 
 	"github.com/aroundme/aroundme-backend/internal/model"
 	"github.com/aroundme/aroundme-backend/internal/usecase"
@@ -63,10 +64,30 @@ func NewAuthHandler(authUseCase usecase.AuthUseCase) *AuthHandler {
 }
 
 func (h *AuthHandler) Register(app fiber.Router) {
-	app.Post("/sign-up", h.signUp)
-	app.Post("/sign-in", h.signIn)
-	app.Post("/social", h.socialSignIn)
-	app.Post("/refresh", h.refresh)
+	tooManyRequests := func(c *fiber.Ctx) error {
+		return c.Status(stdhttp.StatusTooManyRequests).JSON(fiber.Map{
+			"error": "too many requests, please try again later",
+		})
+	}
+
+	// Strict limit for endpoints that mutate credentials or create sessions.
+	strictLimiter := limiter.New(limiter.Config{
+		Max:          10,
+		Expiration:   1 * time.Minute,
+		LimitReached: tooManyRequests,
+	})
+
+	// More lenient limit for token refresh (clients refresh every 15 min).
+	refreshLimiter := limiter.New(limiter.Config{
+		Max:          30,
+		Expiration:   1 * time.Minute,
+		LimitReached: tooManyRequests,
+	})
+
+	app.Post("/sign-up", strictLimiter, h.signUp)
+	app.Post("/sign-in", strictLimiter, h.signIn)
+	app.Post("/social", strictLimiter, h.socialSignIn)
+	app.Post("/refresh", refreshLimiter, h.refresh)
 	app.Post("/sign-out", h.signOut)
 }
 

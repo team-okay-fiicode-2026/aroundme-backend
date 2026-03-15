@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>aroundme Database Visualizer</title>
+  <style>
+    :root {
+      --bg: #f5efe5;
+      --surface: #fffdf8;
+      --surface-strong: #efe6d8;
+      --text: #1f1a14;
+      --muted: #6f665a;
+      --border: #d8cfbe;
+      --accent: #b85c38;
+      --accent-soft: #f3d7ca;
+      --success: #3f7d55;
+      --line: #7d7365;
+      --shadow: 0 18px 40px rgba(31, 26, 20, 0.08);
+      --radius: 24px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(184, 92, 56, 0.14), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(111, 102, 90, 0.1), transparent 24%),
+        var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .page {
+      max-width: 1520px;
+      margin: 0 auto;
+      padding: 40px 28px 64px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(34px, 4vw, 54px);
+      font-weight: 500;
+      line-height: 1.04;
+    }
+
+    .hero p {
+      max-width: 860px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255, 253, 248, 0.72);
+      padding: 9px 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .canvas-wrap {
+      overflow-x: auto;
+      padding-bottom: 16px;
+    }
+
+    .canvas {
+      position: relative;
+      width: 1440px;
+      height: 1040px;
+      border: 1px solid var(--border);
+      border-radius: 36px;
+      background:
+        linear-gradient(rgba(255, 253, 248, 0.92), rgba(255, 253, 248, 0.96)),
+        repeating-linear-gradient(
+          90deg,
+          rgba(216, 207, 190, 0.2) 0,
+          rgba(216, 207, 190, 0.2) 1px,
+          transparent 1px,
+          transparent 48px
+        ),
+        repeating-linear-gradient(
+          0deg,
+          rgba(216, 207, 190, 0.16) 0,
+          rgba(216, 207, 190, 0.16) 1px,
+          transparent 1px,
+          transparent 48px
+        );
+      box-shadow: var(--shadow);
+    }
+
+    .table-card {
+      position: absolute;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .table-card header {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(239, 230, 216, 0.72), rgba(255, 253, 248, 0.98));
+    }
+
+    .table-card h2 {
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.2;
+    }
+
+    .table-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .rows {
+      padding: 10px 14px 14px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 6px;
+      border-bottom: 1px solid rgba(216, 207, 190, 0.65);
+      font-size: 13px;
+    }
+
+    .row:last-child {
+      border-bottom: 0;
+    }
+
+    .row-name {
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .row-type {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .row-badges {
+      display: inline-flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      line-height: 1;
+    }
+
+    .badge-pk {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .badge-fk {
+      background: rgba(63, 125, 85, 0.12);
+      color: var(--success);
+    }
+
+    .badge-unique {
+      background: rgba(31, 26, 20, 0.08);
+      color: var(--text);
+    }
+
+    .table-bootstrap { left: 64px; top: 74px; width: 280px; }
+    .table-auth-passwords { left: 64px; top: 238px; width: 330px; }
+    .table-users { left: 516px; top: 172px; width: 408px; }
+    .table-auth-social { left: 1016px; top: 104px; width: 360px; }
+    .table-sessions { left: 1016px; top: 424px; width: 360px; }
+    .table-user-skills { left: 214px; top: 674px; width: 330px; }
+    .table-user-items { left: 654px; top: 656px; width: 370px; }
+
+    .relationship-map {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .relationship-label {
+      fill: var(--line);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .callout {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .callout-card {
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: rgba(255, 253, 248, 0.84);
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .callout-card h3 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    .callout-card p,
+    .callout-card li {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .callout-card ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    @media (max-width: 1280px) {
+      .canvas {
+        width: 100%;
+        min-width: 1024px;
+      }
+    }
+
+    @media (max-width: 920px) {
+      .page {
+        padding: 28px 18px 48px;
+      }
+
+      .callout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">aroundme backend schema</div>
+      <h1>Database visualizer for tables, keys, and connections</h1>
+      <p>
+        This view reflects the current PostgreSQL structure defined by
+        <code>000001_init.sql</code>, <code>000002_auth.sql</code>, and
+        <code>000004_profile.sql</code>. The arrows point from foreign keys to
+        the referenced primary key.
+      </p>
+      <div class="legend">
+        <span class="pill"><span class="dot" style="background: var(--accent);"></span> Primary key</span>
+        <span class="pill"><span class="dot" style="background: var(--success);"></span> Foreign key</span>
+        <span class="pill"><span class="dot" style="background: var(--text);"></span> Unique constraint</span>
+        <span class="pill">Schema: public</span>
+      </div>
+    </section>
+
+    <div class="canvas-wrap">
+      <section class="canvas" aria-label="Database schema map">
+        <svg class="relationship-map" viewBox="0 0 1440 1040" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L10,5 L0,10 z" fill="#7d7365"></path>
+            </marker>
+          </defs>
+
+          <path d="M394 328 C452 328, 462 344, 516 344" stroke="#7d7365" stroke-width="3" fill="none" marker-end="url(#arrow)"></path>
+          <text class="relationship-label" x="438" y="314">1:1</text>
+
+          <path d="M1016 246 C970 246, 962 254, 924 254" stroke="#7d7365" stroke-width="3" fill="none" marker-end="url(#arrow)"></path>
+          <text class="relationship-label" x="946" y="232">N:1</text>
+
+          <path d="M1016 556 C966 556, 952 484, 924 432" stroke="#7d7365" stroke-width="3" fill="none" marker-end="url(#arrow)"></path>
+          <text class="relationship-label" x="948" y="514">N:1</text>
+
+          <path d="M392 674 C500 674, 536 580, 610 532" stroke="#7d7365" stroke-width="3" fill="none" marker-end="url(#arrow)"></path>
+          <text class="relationship-label" x="470" y="624">N:1</text>
+
+          <path d="M824 656 C808 620, 790 590, 760 544" stroke="#7d7365" stroke-width="3" fill="none" marker-end="url(#arrow)"></path>
+          <text class="relationship-label" x="816" y="612">N:1</text>
+        </svg>
+
+        <article class="table-card table-bootstrap">
+          <header>
+            <h2>bootstrap_checks</h2>
+            <div class="table-meta">System bootstrap probe</div>
+          </header>
+          <div class="rows">
+            <div class="row">
+              <span class="row-name">id</span>
+              <span class="row-type">BIGSERIAL</span>
+              <span class="row-badges"><span class="badge badge-pk">PK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">created_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="table-card table-auth-passwords">
+          <header>
+            <h2>auth_passwords</h2>
+            <div class="table-meta">One password record per user</div>
+          </header>
+          <div class="rows">
+            <div class="row">
+              <span class="row-name">user_id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges">
+                <span class="badge badge-pk">PK</span>
+                <span class="badge badge-fk">FK</span>
+              </span>
+            </div>
+            <div class="row">
+              <span class="row-name">password_hash</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">created_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">updated_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="table-card table-users">
+          <header>
+            <h2>users</h2>
+            <div class="table-meta">Core identity and profile table</div>
+          </header>
+          <div class="rows">
+            <div class="row">
+              <span class="row-name">id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges"><span class="badge badge-pk">PK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">email</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"><span class="badge badge-unique">UQ</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">name</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">avatar_url</span>
+              <span class="row-type">TEXT NULL</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">bio</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">latitude</span>
+              <span class="row-type">DOUBLE PRECISION NULL</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">longitude</span>
+              <span class="row-type">DOUBLE PRECISION NULL</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">neighborhood_radius_km</span>
+              <span class="row-type">DOUBLE PRECISION</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">quiet_hours_start</span>
+              <span class="row-type">TIME NULL</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">quiet_hours_end</span>
+              <span class="row-type">TIME NULL</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">distance_limit_km</span>
+              <span class="row-type">DOUBLE PRECISION</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">created_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">updated_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="table-card table-auth-social">
+          <header>
+            <h2>auth_social_accounts</h2>
+            <div class="table-meta">Linked external auth identities</div>
+          </header>
+          <div class="rows">
+            <div class="row">
+              <span class="row-name">id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges"><span class="badge badge-pk">PK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">user_id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges"><span class="badge badge-fk">FK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">provider</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">provider_user_id</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"><span class="badge badge-unique">UQ*</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">email</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">created_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">updated_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="table-card table-sessions">
+          <header>
+            <h2>sessions</h2>
+            <div class="table-meta">Rotating access and refresh sessions</div>
+          </header>
+          <div class="rows">
+            <div class="row">
+              <span class="row-name">id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges"><span class="badge badge-pk">PK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">user_id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges"><span class="badge badge-fk">FK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">access_token_hash</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"><span class="badge badge-unique">UQ</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">refresh_token_hash</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"><span class="badge badge-unique">UQ</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">access_expires_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">refresh_expires_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">last_refreshed_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">last_used_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">revoked_at</span>
+              <span class="row-type">TIMESTAMPTZ NULL</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">created_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="table-card table-user-skills">
+          <header>
+            <h2>user_skills</h2>
+            <div class="table-meta">Tags a user can offer</div>
+          </header>
+          <div class="rows">
+            <div class="row">
+              <span class="row-name">id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges"><span class="badge badge-pk">PK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">user_id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges">
+                <span class="badge badge-fk">FK</span>
+                <span class="badge badge-unique">UQ*</span>
+              </span>
+            </div>
+            <div class="row">
+              <span class="row-name">tag</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"><span class="badge badge-unique">UQ*</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">created_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="table-card table-user-items">
+          <header>
+            <h2>user_items</h2>
+            <div class="table-meta">Items a user is willing to lend</div>
+          </header>
+          <div class="rows">
+            <div class="row">
+              <span class="row-name">id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges"><span class="badge badge-pk">PK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">user_id</span>
+              <span class="row-type">UUID</span>
+              <span class="row-badges"><span class="badge badge-fk">FK</span></span>
+            </div>
+            <div class="row">
+              <span class="row-name">name</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">description</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">category</span>
+              <span class="row-type">TEXT</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">available</span>
+              <span class="row-type">BOOLEAN</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">created_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+            <div class="row">
+              <span class="row-name">updated_at</span>
+              <span class="row-type">TIMESTAMPTZ</span>
+              <span class="row-badges"></span>
+            </div>
+          </div>
+        </article>
+      </section>
+    </div>
+
+    <section class="callout">
+      <article class="callout-card">
+        <h3>Relationship notes</h3>
+        <ul>
+          <li><code>auth_passwords.user_id</code> is both the primary key and foreign key, making password credentials one-to-one with a user.</li>
+          <li><code>auth_social_accounts</code>, <code>sessions</code>, <code>user_skills</code>, and <code>user_items</code> are all many-to-one children of <code>users</code>.</li>
+          <li><code>auth_social_accounts</code> enforces uniqueness on <code>(provider, provider_user_id)</code>.</li>
+          <li><code>user_skills</code> enforces uniqueness on <code>(user_id, tag)</code>.</li>
+        </ul>
+      </article>
+
+      <article class="callout-card">
+        <h3>What this does not show</h3>
+        <p>
+          Index-only migrations such as <code>000003_session_indexes.sql</code> are not drawn as tables.
+          This page is meant to make table structure and foreign key shape easy to scan quickly.
+        </p>
+        <p>
+          If you want a live data browser next, add Adminer or pgAdmin on top of this. This file is only the schema map.
+        </p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

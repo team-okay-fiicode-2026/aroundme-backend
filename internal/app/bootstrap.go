@@ -33,25 +33,30 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	}
 
 	authRepository := postgresrepository.NewAuthRepository(postgres)
+	profileRepository := postgresrepository.NewProfileRepository(postgres)
 
 	authUseCase := usecase.NewAuthUseCase(authRepository, usecase.AuthConfig{
 		AccessTokenTTL:     time.Duration(cfg.AccessTokenTTLMinutes) * time.Minute,
 		RefreshTokenTTL:    time.Duration(cfg.RefreshTokenTTLHours) * time.Hour,
 		AllowDevSocialAuth: cfg.AllowDevSocialAuth,
 	})
+	profileUseCase := usecase.NewProfileUseCase(profileRepository)
 
 	app := fiber.New(fiber.Config{
 		AppName:       "aroundme-backend",
 		CaseSensitive: true,
+		ReadTimeout:   10 * time.Second,
+		WriteTimeout:  10 * time.Second,
+		IdleTimeout:   120 * time.Second,
 	})
 
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: cfg.CORSOrigin,
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-		AllowMethods: "GET,POST,OPTIONS",
+		AllowMethods: "GET,POST,PATCH,PUT,DELETE,OPTIONS",
 	}))
 
-	deliveryhttp.Register(app, authUseCase, postgres)
+	deliveryhttp.Register(app, authUseCase, profileUseCase, postgres)
 
 	return &Application{
 		Config:   cfg,

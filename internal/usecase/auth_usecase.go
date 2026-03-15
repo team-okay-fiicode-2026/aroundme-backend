@@ -29,6 +29,7 @@ type AuthUseCase interface {
 	SocialSignIn(ctx context.Context, input model.SocialSignInInput) (model.AuthResult, error)
 	RefreshSession(ctx context.Context, input model.RefreshSessionInput) (model.AuthResult, error)
 	SignOut(ctx context.Context, input model.SignOutInput) error
+	ValidateAccessToken(ctx context.Context, accessToken string) (entity.User, error)
 }
 
 type AuthConfig struct {
@@ -179,6 +180,19 @@ func (u *authUseCase) RefreshSession(ctx context.Context, input model.RefreshSes
 	return toAuthResult(result), nil
 }
 
+func (u *authUseCase) ValidateAccessToken(ctx context.Context, accessToken string) (entity.User, error) {
+	if strings.TrimSpace(accessToken) == "" {
+		return entity.User{}, repository.ErrNotFound
+	}
+
+	user, err := u.authRepository.ValidateAccessToken(ctx, hashToken(accessToken))
+	if err != nil {
+		return entity.User{}, err
+	}
+
+	return user, nil
+}
+
 func (u *authUseCase) SignOut(ctx context.Context, input model.SignOutInput) error {
 	refreshToken := strings.TrimSpace(input.RefreshToken)
 	if refreshToken == "" {
@@ -237,6 +251,12 @@ func normalizeName(name string) (string, error) {
 func validatePassword(password string) error {
 	if len(password) < 8 {
 		return model.ValidationError{Message: "password must be at least 8 characters"}
+	}
+
+	// bcrypt silently truncates at 72 bytes; reject longer passwords to avoid
+	// two different passwords hashing identically.
+	if len(password) > 72 {
+		return model.ValidationError{Message: "password must be no longer than 72 characters"}
 	}
 
 	return nil

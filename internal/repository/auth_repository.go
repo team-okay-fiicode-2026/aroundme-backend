@@ -25,4 +25,5 @@ type AuthRepository interface {
 	) (entity.AuthResult, error)
 	RefreshSession(ctx context.Context, refreshTokenHash string, replacement entity.AuthSession) (entity.AuthResult, error)
 	RevokeSession(ctx context.Context, refreshTokenHash string) error
+	ValidateAccessToken(ctx context.Context, accessTokenHash string) (entity.User, error)
 }

@@ -433,6 +433,24 @@ func rotateSession(ctx context.Context, tx pgx.Tx, session entity.AuthSession) (
 	return commandTag.RowsAffected() > 0, nil
 }
 
+func (r *AuthRepository) ValidateAccessToken(ctx context.Context, accessTokenHash string) (entity.User, error) {
+	var user entity.User
+
+	err := r.postgres.Pool().QueryRow(ctx, `
+		SELECT u.id, u.email, u.name, COALESCE(u.avatar_url, '')
+		FROM sessions s
+		INNER JOIN users u ON u.id = s.user_id
+		WHERE s.access_token_hash = $1
+		  AND s.revoked_at IS NULL
+		  AND s.access_expires_at > NOW()
+	`, accessTokenHash).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL)
+	if err != nil {
+		return entity.User{}, err
+	}
+
+	return user, nil
+}
+
 func isUniqueConstraintError(err error, constraintName string) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {

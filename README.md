@@ -41,3 +41,7 @@ This starts Postgres on `localhost:5432` and the API on `localhost:8080`.
 ```bash
 curl http://localhost:8080/health
 ```
+
+## Database visualizer
+
+Open `docs/database-visualizer.html` in a browser to inspect the current tables, keys, and foreign key connections.
