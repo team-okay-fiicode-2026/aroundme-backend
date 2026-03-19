@@ -13,9 +13,12 @@ type Config struct {
 	DatabaseURL           string
 	CORSOrigin            string
 	Env                   string
+	MigrationsDir         string
+	UploadsDir            string
 	AccessTokenTTLMinutes int
 	RefreshTokenTTLHours  int
 	AllowDevSocialAuth    bool
+	ExpoPushAccessToken   string
 }
 
 func Load() (Config, error) {
@@ -28,9 +31,12 @@ func Load() (Config, error) {
 		DatabaseURL:           getEnv("DATABASE_URL", ""),
 		CORSOrigin:            getEnv("CORS_ORIGIN", "http://localhost:8081,http://localhost:19006,http://localhost:3000"),
 		Env:                   env,
+		MigrationsDir:         getEnv("MIGRATIONS_DIR", "migrations"),
+		UploadsDir:            getEnv("UPLOADS_DIR", "uploads"),
 		AccessTokenTTLMinutes: getEnvInt("ACCESS_TOKEN_TTL_MINUTES", 15),
 		RefreshTokenTTLHours:  getEnvInt("REFRESH_TOKEN_TTL_HOURS", 24*30),
-		AllowDevSocialAuth:    getEnvBool("ALLOW_DEV_SOCIAL_AUTH", env == "development"),
+		AllowDevSocialAuth:    getEnvBool("ALLOW_DEV_SOCIAL_AUTH", false),
+		ExpoPushAccessToken:   getEnv("EXPO_PUSH_ACCESS_TOKEN", ""),
 	}
 
 	if cfg.DatabaseURL == "" {

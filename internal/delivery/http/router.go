@@ -18,6 +18,8 @@ func Register(
 	messageStreamHub *MessageStreamHub,
 	messageImageStore MessageImageStore,
 	avatarImageStore AvatarImageStore,
+	notificationUseCase usecase.NotificationUseCase,
+	notificationStreamHub *NotificationStreamHub,
 	db *database.Postgres,
 ) {
 	NewHealthHandler(db).Register(app)
@@ -27,4 +29,5 @@ func Register(
 	profileHandler.RegisterPublic(app.Group("/users", AuthRequired(authUseCase)))
 	NewPostHandler(postUseCase, authUseCase, postStreamHub, postImageStore).Register(app.Group("/posts"))
 	NewMessageHandler(authUseCase, messageUseCase, messageStreamHub, messageImageStore).Register(app.Group("/messages"))
+	NewNotificationHandler(authUseCase, notificationUseCase, notificationStreamHub).Register(app.Group("/notifications"))
 }

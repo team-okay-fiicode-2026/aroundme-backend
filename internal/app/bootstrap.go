@@ -11,6 +11,7 @@ import (
 	"github.com/aroundme/aroundme-backend/internal/config"
 	deliveryhttp "github.com/aroundme/aroundme-backend/internal/delivery/http"
 	"github.com/aroundme/aroundme-backend/internal/platform/database"
+	"github.com/aroundme/aroundme-backend/internal/platform/push"
 	"github.com/aroundme/aroundme-backend/internal/platform/storage"
 	postgresrepository "github.com/aroundme/aroundme-backend/internal/repository/postgres"
 	"github.com/aroundme/aroundme-backend/internal/usecase"
@@ -41,9 +42,11 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	profileRepository := postgresrepository.NewProfileRepository(postgres)
 	postRepository := postgresrepository.NewPostRepository(postgres)
 	messageRepository := postgresrepository.NewMessageRepository(postgres)
+	notificationRepository := postgresrepository.NewNotificationRepository(postgres)
 
 	postStreamHub := deliveryhttp.NewPostStreamHub()
 	messageStreamHub := deliveryhttp.NewMessageStreamHub()
+	notificationStreamHub := deliveryhttp.NewNotificationStreamHub()
 
 	postImageStore, err := storage.NewLocalImageStore(cfg.UploadsDir, "posts", "post", 10<<20)
 	if err != nil {
@@ -64,8 +67,12 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 		AllowDevSocialAuth: cfg.AllowDevSocialAuth,
 	})
 	profileUseCase := usecase.NewProfileUseCase(profileRepository, authRepository, nil)
-	postUseCase := usecase.NewPostUseCase(postRepository, nil, postStreamHub, nil)
-	messageUseCase := usecase.NewMessageUseCase(messageRepository, messageStreamHub, nil)
+
+	expoPusher := push.NewExpoClient(cfg.ExpoPushAccessToken)
+	notificationService := usecase.NewNotificationService(notificationRepository, notificationStreamHub, expoPusher)
+
+	postUseCase := usecase.NewPostUseCase(postRepository, nil, postStreamHub, notificationService)
+	messageUseCase := usecase.NewMessageUseCase(messageRepository, messageStreamHub, notificationService)
 
 	app := fiber.New(fiber.Config{
 		AppName:       "aroundme-backend",
@@ -82,7 +89,7 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	}))
 	app.Static("/uploads", cfg.UploadsDir)
 
-	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, postgres)
+	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationStreamHub, postgres)
 
 	return &Application{
 		Config:   cfg,
