@@ -22,6 +22,8 @@ cp .env.example .env
 go run ./cmd/api
 ```
 
+On startup the API now applies pending SQL files from `MIGRATIONS_DIR` automatically and records them in `schema_migrations`.
+
 ## Run with Docker Compose
 
 ```bash
@@ -35,6 +37,7 @@ docker-compose up --build
 ```
 
 This starts Postgres on `localhost:5432` and the API on `localhost:8080`.
+Uploaded post, message, and avatar images are stored under `./uploads` on the host, so they survive container restarts.
 
 ## Check it
 

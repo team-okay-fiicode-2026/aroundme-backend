@@ -14,19 +14,30 @@ import (
 type ProfileUseCase interface {
 	GetProfile(ctx context.Context, userID string) (entity.Profile, error)
 	UpdateProfile(ctx context.Context, userID string, input model.UpdateProfileInput) (entity.Profile, error)
+	UpdateAvatarURL(ctx context.Context, userID, avatarURL string) error
 	SetSkills(ctx context.Context, userID string, input model.SetSkillsInput) ([]string, error)
 	CreateItem(ctx context.Context, userID string, input model.CreateItemInput) (entity.ProfileItem, error)
 	UpdateItem(ctx context.Context, userID, itemID string, input model.UpdateItemInput) (entity.ProfileItem, error)
 	DeleteItem(ctx context.Context, userID, itemID string) error
-	DeleteAccount(ctx context.Context, userID string) error
+	DeleteAccount(ctx context.Context, userID string, input model.DeleteAccountInput) (entity.AccountMediaPaths, error)
 }
 
 type profileUseCase struct {
+	authRepository    repository.AuthRepository
 	profileRepository repository.ProfileRepository
+	trustRepository   repository.TrustRepository
 }
 
-func NewProfileUseCase(profileRepository repository.ProfileRepository) ProfileUseCase {
-	return &profileUseCase{profileRepository: profileRepository}
+func NewProfileUseCase(
+	profileRepository repository.ProfileRepository,
+	authRepository repository.AuthRepository,
+	trustRepository repository.TrustRepository,
+) ProfileUseCase {
+	return &profileUseCase{
+		authRepository:    authRepository,
+		profileRepository: profileRepository,
+		trustRepository:   trustRepository,
+	}
 }
 
 func (u *profileUseCase) GetProfile(ctx context.Context, userID string) (entity.Profile, error) {
@@ -36,6 +47,9 @@ func (u *profileUseCase) GetProfile(ctx context.Context, userID string) (entity.
 			return entity.Profile{}, model.ErrProfileNotFound
 		}
 		return entity.Profile{}, fmt.Errorf("get profile: %w", err)
+	}
+	if err := u.fillTrustScore(ctx, &profile); err != nil {
+		return entity.Profile{}, fmt.Errorf("get trust score: %w", err)
 	}
 	return profile, nil
 }
@@ -98,7 +112,34 @@ func (u *profileUseCase) UpdateProfile(ctx context.Context, userID string, input
 
 	updated.Skills = current.Skills
 	updated.Items = current.Items
+	if err := u.fillTrustScore(ctx, &updated); err != nil {
+		return entity.Profile{}, fmt.Errorf("get trust score: %w", err)
+	}
 	return updated, nil
+}
+
+func (u *profileUseCase) fillTrustScore(ctx context.Context, profile *entity.Profile) error {
+	if profile == nil || u.trustRepository == nil {
+		return nil
+	}
+
+	score, err := u.trustRepository.GetTrustScore(ctx, profile.ID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.ErrProfileNotFound
+		}
+		return err
+	}
+
+	profile.TrustScore = score.Score
+	return nil
+}
+
+func (u *profileUseCase) UpdateAvatarURL(ctx context.Context, userID, avatarURL string) error {
+	if err := u.profileRepository.UpdateAvatarURL(ctx, userID, avatarURL); err != nil {
+		return fmt.Errorf("update avatar url: %w", err)
+	}
+	return nil
 }
 
 func (u *profileUseCase) SetSkills(ctx context.Context, userID string, input model.SetSkillsInput) ([]string, error) {
@@ -106,21 +147,9 @@ func (u *profileUseCase) SetSkills(ctx context.Context, userID string, input mod
 		return nil, model.ValidationError{Message: "maximum 20 skill tags allowed"}
 	}
 
-	cleaned := make([]string, 0, len(input.Tags))
-	seen := make(map[string]struct{})
-	for _, raw := range input.Tags {
-		tag := strings.ToLower(strings.TrimSpace(raw))
-		if tag == "" {
-			continue
-		}
-		if len(tag) > 50 {
-			return nil, model.ValidationError{Message: fmt.Sprintf("skill tag %q is too long", tag)}
-		}
-		if _, exists := seen[tag]; exists {
-			continue
-		}
-		seen[tag] = struct{}{}
-		cleaned = append(cleaned, tag)
+	cleaned, err := normalizeSkillTags(input.Tags)
+	if err != nil {
+		return nil, err
 	}
 
 	tags, err := u.profileRepository.SetSkills(ctx, userID, cleaned)
@@ -149,6 +178,7 @@ func (u *profileUseCase) CreateItem(ctx context.Context, userID string, input mo
 		Name:        name,
 		Description: strings.TrimSpace(input.Description),
 		Category:    category,
+		MatchTags:   deriveItemMatchTags(entity.ProfileItem{Name: name, Description: strings.TrimSpace(input.Description), Category: category}),
 	})
 	if err != nil {
 		return entity.ProfileItem{}, fmt.Errorf("create item: %w", err)
@@ -189,6 +219,7 @@ func (u *profileUseCase) UpdateItem(ctx context.Context, userID, itemID string, 
 	if input.Available != nil {
 		current.Available = *input.Available
 	}
+	current.MatchTags = deriveItemMatchTags(*current)
 
 	updated, err := u.profileRepository.UpdateItem(ctx, *current)
 	if err != nil {
@@ -207,12 +238,45 @@ func (u *profileUseCase) DeleteItem(ctx context.Context, userID, itemID string) 
 	return nil
 }
 
-func (u *profileUseCase) DeleteAccount(ctx context.Context, userID string) error {
+func (u *profileUseCase) DeleteAccount(ctx context.Context, userID string, input model.DeleteAccountInput) (entity.AccountMediaPaths, error) {
+	confirmationText := strings.TrimSpace(input.ConfirmationText)
+	if confirmationText != model.DeleteAccountConfirmationPhrase {
+		return entity.AccountMediaPaths{}, model.ValidationError{Message: fmt.Sprintf("type %q to confirm account deletion", model.DeleteAccountConfirmationPhrase)}
+	}
+
+	hasPasswordCredential, err := u.authRepository.HasPasswordCredential(ctx, userID)
+	if err != nil {
+		return entity.AccountMediaPaths{}, fmt.Errorf("check delete-account credentials: %w", err)
+	}
+
+	password := strings.TrimSpace(input.CurrentPassword)
+	if hasPasswordCredential {
+		if password == "" {
+			return entity.AccountMediaPaths{}, model.ValidationError{Message: "current password is required to delete your account"}
+		}
+
+		validPassword, err := u.authRepository.ValidateUserPassword(ctx, userID, password)
+		if err != nil {
+			return entity.AccountMediaPaths{}, fmt.Errorf("validate delete-account password: %w", err)
+		}
+		if !validPassword {
+			return entity.AccountMediaPaths{}, model.ValidationError{Message: "current password is incorrect"}
+		}
+	}
+
+	media, err := u.profileRepository.GetAccountMediaPaths(ctx, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return entity.AccountMediaPaths{}, model.ErrProfileNotFound
+		}
+		return entity.AccountMediaPaths{}, fmt.Errorf("list account media: %w", err)
+	}
+
 	if err := u.profileRepository.DeleteAccount(ctx, userID); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return model.ErrProfileNotFound
+			return entity.AccountMediaPaths{}, model.ErrProfileNotFound
 		}
-		return fmt.Errorf("delete account: %w", err)
+		return entity.AccountMediaPaths{}, fmt.Errorf("delete account: %w", err)
 	}
-	return nil
+	return media, nil
 }

@@ -233,6 +233,35 @@ func (r *AuthRepository) RevokeSession(ctx context.Context, refreshTokenHash str
 	return nil
 }
 
+func (r *AuthRepository) HasPasswordCredential(ctx context.Context, userID string) (bool, error) {
+	var hasPassword bool
+	if err := r.postgres.Pool().QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM auth_passwords
+			WHERE user_id = $1
+		)
+	`, userID).Scan(&hasPassword); err != nil {
+		return false, fmt.Errorf("check password credential: %w", err)
+	}
+	return hasPassword, nil
+}
+
+func (r *AuthRepository) ValidateUserPassword(ctx context.Context, userID, password string) (bool, error) {
+	var valid bool
+	if err := r.postgres.Pool().QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM auth_passwords ap
+			WHERE ap.user_id = $1
+			  AND ap.password_hash = crypt($2, ap.password_hash)
+		)
+	`, userID, password).Scan(&valid); err != nil {
+		return false, fmt.Errorf("validate user password: %w", err)
+	}
+	return valid, nil
+}
+
 func createUser(ctx context.Context, tx pgx.Tx, user entity.User) (entity.User, error) {
 	var createdUser entity.User
 
