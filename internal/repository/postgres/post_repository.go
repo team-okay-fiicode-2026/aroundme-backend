@@ -725,3 +725,50 @@ func statusRank(status entity.PostStatus) int {
 	return 1
 }
 
+// ClaimUntaggedPosts atomically selects up to limit untagged posts (created
+// within the last 2 hours) and marks them as claimed by setting ai_tagged_at =
+// NOW(). Using FOR UPDATE SKIP LOCKED makes it safe to run multiple worker
+// instances without double-processing the same post.
+func (r *PostRepository) ClaimUntaggedPosts(ctx context.Context, limit int) ([]entity.Post, error) {
+	rows, err := r.postgres.Pool().Query(ctx, `
+		UPDATE posts
+		SET ai_tagged_at = NOW()
+		WHERE id IN (
+			SELECT id
+			FROM posts
+			WHERE ai_tagged_at IS NULL
+			  AND created_at > NOW() - INTERVAL '2 hours'
+			ORDER BY created_at ASC
+			LIMIT $1
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, user_id, kind, title, body, tags, latitude, longitude, location_name
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("claim untagged posts: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []entity.Post
+	for rows.Next() {
+		var p entity.Post
+		if err := rows.Scan(
+			&p.ID, &p.UserID, &p.Kind, &p.Title, &p.Body,
+			&p.Tags, &p.Latitude, &p.Longitude, &p.LocationName,
+		); err != nil {
+			return nil, fmt.Errorf("scan untagged post: %w", err)
+		}
+		posts = append(posts, p)
+	}
+	return posts, rows.Err()
+}
+
+// UpdateAITags replaces the stored tags for postID with the merged set
+// produced by the AI tagger.
+func (r *PostRepository) UpdateAITags(ctx context.Context, postID string, tags []string) error {
+	_, err := r.postgres.Pool().Exec(ctx, `
+		UPDATE posts SET tags = $2, updated_at = NOW() WHERE id = $1
+	`, postID, tags)
+	return err
+}
+

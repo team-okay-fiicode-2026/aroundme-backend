@@ -19,6 +19,7 @@ type Config struct {
 	RefreshTokenTTLHours  int
 	AllowDevSocialAuth    bool
 	ExpoPushAccessToken   string
+	AnthropicAPIKey       string
 }
 
 func Load() (Config, error) {
@@ -37,6 +38,7 @@ func Load() (Config, error) {
 		RefreshTokenTTLHours:  getEnvInt("REFRESH_TOKEN_TTL_HOURS", 24*30),
 		AllowDevSocialAuth:    getEnvBool("ALLOW_DEV_SOCIAL_AUTH", false),
 		ExpoPushAccessToken:   getEnv("EXPO_PUSH_ACCESS_TOKEN", ""),
+		AnthropicAPIKey:       getEnv("ANTHROPIC_API_KEY", ""),
 	}
 
 	if cfg.DatabaseURL == "" {

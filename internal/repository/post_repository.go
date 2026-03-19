@@ -16,4 +16,10 @@ type PostRepository interface {
 	ToggleCommentReaction(ctx context.Context, commentID, userID string) (reactionCount int, isReacted bool, err error)
 	UpdateStatus(ctx context.Context, postID, userID string, status entity.PostStatus) (entity.Post, error)
 	ResolvePost(ctx context.Context, postID, userID string, helperUserIDs []string) (entity.Post, error)
+	// ClaimUntaggedPosts atomically selects up to limit posts that have not yet
+	// been processed by the AI tagger and marks them as claimed by setting
+	// ai_tagged_at = NOW(). Only posts newer than 2 hours are considered.
+	ClaimUntaggedPosts(ctx context.Context, limit int) ([]entity.Post, error)
+	// UpdateAITags replaces the tags for postID with the given slice.
+	UpdateAITags(ctx context.Context, postID string, tags []string) error
 }
