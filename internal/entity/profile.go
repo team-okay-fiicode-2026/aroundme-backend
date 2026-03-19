@@ -12,6 +12,7 @@ type Profile struct {
 	QuietHoursStart      *string // "HH:MM"
 	QuietHoursEnd        *string
 	DistanceLimitKm      float64
+	TrustScore           int
 	Skills               []string
 	Items                []ProfileItem
 }

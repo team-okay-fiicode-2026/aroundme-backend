@@ -43,6 +43,7 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	postRepository := postgresrepository.NewPostRepository(postgres)
 	messageRepository := postgresrepository.NewMessageRepository(postgres)
 	notificationRepository := postgresrepository.NewNotificationRepository(postgres)
+	trustRepository := postgresrepository.NewTrustRepository(postgres)
 
 	postStreamHub := deliveryhttp.NewPostStreamHub()
 	messageStreamHub := deliveryhttp.NewMessageStreamHub()
@@ -66,12 +67,13 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 		RefreshTokenTTL:    time.Duration(cfg.RefreshTokenTTLHours) * time.Hour,
 		AllowDevSocialAuth: cfg.AllowDevSocialAuth,
 	})
-	profileUseCase := usecase.NewProfileUseCase(profileRepository, authRepository, nil)
+	profileUseCase := usecase.NewProfileUseCase(profileRepository, authRepository, trustRepository)
 
 	expoPusher := push.NewExpoClient(cfg.ExpoPushAccessToken)
 	notificationService := usecase.NewNotificationService(notificationRepository, notificationStreamHub, expoPusher)
 
-	postUseCase := usecase.NewPostUseCase(postRepository, nil, postStreamHub, notificationService)
+	trustService := usecase.NewTrustUseCase(trustRepository)
+	postUseCase := usecase.NewPostUseCase(postRepository, trustRepository, postStreamHub, notificationService)
 	messageUseCase := usecase.NewMessageUseCase(messageRepository, messageStreamHub, notificationService)
 
 	app := fiber.New(fiber.Config{
@@ -89,7 +91,7 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	}))
 	app.Static("/uploads", cfg.UploadsDir)
 
-	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationStreamHub, postgres)
+	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationStreamHub, trustService, postgres)
 
 	return &Application{
 		Config:   cfg,
