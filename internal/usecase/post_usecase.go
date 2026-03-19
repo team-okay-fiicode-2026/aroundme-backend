@@ -206,13 +206,8 @@ func (u *postUseCase) CreatePost(ctx context.Context, userID string, input model
 	if post.Kind == entity.PostKindEmergency {
 		go u.notifier.NotifyEmergencyPost(context.Background(), post)
 	}
-
-	// For non-emergency posts, send a Hero Alert to nearby users whose skills
-	// match the post's tags. Emergency posts already notify all nearby users,
-	// so we skip this to avoid duplicate notifications.
-	if post.Kind != entity.PostKindEmergency && len(post.Tags) > 0 {
-		go u.notifier.NotifySkillMatchPost(context.Background(), post)
-	}
+	// Skill-match notifications for non-emergency posts are sent by the
+	// background AI tagger worker after it enriches the post's tags.
 
 	return toPostDetail(post, userID), nil
 }
