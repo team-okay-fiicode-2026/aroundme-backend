@@ -15,6 +15,7 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 
 COPY --from=builder /usr/local/bin/aroundme-api /usr/local/bin/aroundme-api
+COPY --from=builder /app/migrations /app/migrations
 
 EXPOSE 8080
 

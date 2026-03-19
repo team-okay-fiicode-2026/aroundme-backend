@@ -8,9 +8,12 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("repository record not found")
-	ErrTokenConflict = errors.New("repository token conflict")
-	ErrUniqueEmail   = errors.New("repository unique email")
+	ErrNotFound           = errors.New("repository record not found")
+	ErrForbidden          = errors.New("repository forbidden")
+	ErrDuplicate          = errors.New("repository duplicate record")
+	ErrTokenConflict      = errors.New("repository token conflict")
+	ErrUniqueEmail        = errors.New("repository unique email")
+	ErrNoEligibleHelpers  = errors.New("repository no eligible helpers")
 )
 
 type AuthRepository interface {
@@ -26,4 +29,6 @@ type AuthRepository interface {
 	RefreshSession(ctx context.Context, refreshTokenHash string, replacement entity.AuthSession) (entity.AuthResult, error)
 	RevokeSession(ctx context.Context, refreshTokenHash string) error
 	ValidateAccessToken(ctx context.Context, accessTokenHash string) (entity.User, error)
+	HasPasswordCredential(ctx context.Context, userID string) (bool, error)
+	ValidateUserPassword(ctx context.Context, userID, password string) (bool, error)
 }

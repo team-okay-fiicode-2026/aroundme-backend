@@ -11,6 +11,7 @@ import (
 	"github.com/aroundme/aroundme-backend/internal/config"
 	deliveryhttp "github.com/aroundme/aroundme-backend/internal/delivery/http"
 	"github.com/aroundme/aroundme-backend/internal/platform/database"
+	"github.com/aroundme/aroundme-backend/internal/platform/storage"
 	postgresrepository "github.com/aroundme/aroundme-backend/internal/repository/postgres"
 	"github.com/aroundme/aroundme-backend/internal/usecase"
 )
@@ -31,16 +32,33 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}
+	if err := database.RunMigrations(ctx, postgres, cfg.MigrationsDir); err != nil {
+		postgres.Close()
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
 
 	authRepository := postgresrepository.NewAuthRepository(postgres)
 	profileRepository := postgresrepository.NewProfileRepository(postgres)
+	postRepository := postgresrepository.NewPostRepository(postgres)
+
+	postStreamHub := deliveryhttp.NewPostStreamHub()
+
+	postImageStore, err := storage.NewLocalImageStore(cfg.UploadsDir, "posts", "post", 10<<20)
+	if err != nil {
+		return nil, fmt.Errorf("create post image store: %w", err)
+	}
+	avatarImageStore, err := storage.NewLocalImageStore(cfg.UploadsDir, "avatars", "avatar", 5<<20)
+	if err != nil {
+		return nil, fmt.Errorf("create avatar image store: %w", err)
+	}
 
 	authUseCase := usecase.NewAuthUseCase(authRepository, usecase.AuthConfig{
 		AccessTokenTTL:     time.Duration(cfg.AccessTokenTTLMinutes) * time.Minute,
 		RefreshTokenTTL:    time.Duration(cfg.RefreshTokenTTLHours) * time.Hour,
 		AllowDevSocialAuth: cfg.AllowDevSocialAuth,
 	})
-	profileUseCase := usecase.NewProfileUseCase(profileRepository)
+	profileUseCase := usecase.NewProfileUseCase(profileRepository, authRepository, nil)
+	postUseCase := usecase.NewPostUseCase(postRepository, nil, postStreamHub, nil)
 
 	app := fiber.New(fiber.Config{
 		AppName:       "aroundme-backend",
@@ -55,8 +73,9 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET,POST,PATCH,PUT,DELETE,OPTIONS",
 	}))
+	app.Static("/uploads", cfg.UploadsDir)
 
-	deliveryhttp.Register(app, authUseCase, profileUseCase, postgres)
+	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, avatarImageStore, postgres)
 
 	return &Application{
 		Config:   cfg,

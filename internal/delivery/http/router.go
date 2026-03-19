@@ -11,9 +11,16 @@ func Register(
 	app *fiber.App,
 	authUseCase usecase.AuthUseCase,
 	profileUseCase usecase.ProfileUseCase,
+	postUseCase usecase.PostUseCase,
+	postStreamHub *PostStreamHub,
+	postImageStore PostImageStore,
+	avatarImageStore AvatarImageStore,
 	db *database.Postgres,
 ) {
 	NewHealthHandler(db).Register(app)
 	NewAuthHandler(authUseCase).Register(app.Group("/auth"))
-	NewProfileHandler(profileUseCase).Register(app.Group("/profile", AuthRequired(authUseCase)))
+	profileHandler := NewProfileHandler(profileUseCase, avatarImageStore, postImageStore, nil)
+	profileHandler.Register(app.Group("/profile", AuthRequired(authUseCase)))
+	profileHandler.RegisterPublic(app.Group("/users", AuthRequired(authUseCase)))
+	NewPostHandler(postUseCase, authUseCase, postStreamHub, postImageStore).Register(app.Group("/posts"))
 }

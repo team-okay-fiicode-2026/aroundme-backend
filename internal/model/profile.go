@@ -7,6 +7,8 @@ var (
 	ErrItemNotFound    = errors.New("item not found")
 )
 
+const DeleteAccountConfirmationPhrase = "DELETE MY ACCOUNT"
+
 type UpdateProfileInput struct {
 	Name                 *string  `json:"name"`
 	Bio                  *string  `json:"bio"`
@@ -33,4 +35,9 @@ type UpdateItemInput struct {
 	Description *string `json:"description"`
 	Category    *string `json:"category"`
 	Available   *bool   `json:"available"`
+}
+
+type DeleteAccountInput struct {
+	ConfirmationText string `json:"confirmationText"`
+	CurrentPassword  string `json:"currentPassword"`
 }

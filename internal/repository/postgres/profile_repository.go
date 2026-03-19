@@ -93,6 +93,16 @@ func (r *ProfileRepository) UpdateProfile(ctx context.Context, p entity.Profile)
 	return p, nil
 }
 
+func (r *ProfileRepository) UpdateAvatarURL(ctx context.Context, userID, avatarURL string) error {
+	_, err := r.postgres.Pool().Exec(ctx, `
+		UPDATE users SET avatar_url = NULLIF($2, ''), updated_at = NOW() WHERE id = $1
+	`, userID, avatarURL)
+	if err != nil {
+		return fmt.Errorf("update avatar url: %w", err)
+	}
+	return nil
+}
+
 func (r *ProfileRepository) SetSkills(ctx context.Context, userID string, tags []string) ([]string, error) {
 	tx, err := r.postgres.Pool().BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -119,11 +129,11 @@ func (r *ProfileRepository) SetSkills(ctx context.Context, userID string, tags [
 
 func (r *ProfileRepository) CreateItem(ctx context.Context, item entity.ProfileItem) (entity.ProfileItem, error) {
 	err := r.postgres.Pool().QueryRow(ctx, `
-		INSERT INTO user_items (user_id, name, description, category)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, user_id, name, description, category, available
-	`, item.UserID, item.Name, item.Description, item.Category).Scan(
-		&item.ID, &item.UserID, &item.Name, &item.Description, &item.Category, &item.Available,
+		INSERT INTO user_items (user_id, name, description, category, match_tags)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, user_id, name, description, category, match_tags, available
+	`, item.UserID, item.Name, item.Description, item.Category, item.MatchTags).Scan(
+		&item.ID, &item.UserID, &item.Name, &item.Description, &item.Category, &item.MatchTags, &item.Available,
 	)
 	if err != nil {
 		return entity.ProfileItem{}, fmt.Errorf("create item: %w", err)
@@ -134,11 +144,11 @@ func (r *ProfileRepository) CreateItem(ctx context.Context, item entity.ProfileI
 func (r *ProfileRepository) UpdateItem(ctx context.Context, item entity.ProfileItem) (entity.ProfileItem, error) {
 	err := r.postgres.Pool().QueryRow(ctx, `
 		UPDATE user_items
-		SET name = $3, description = $4, category = $5, available = $6, updated_at = NOW()
+		SET name = $3, description = $4, category = $5, match_tags = $6, available = $7, updated_at = NOW()
 		WHERE id = $1 AND user_id = $2
-		RETURNING id, user_id, name, description, category, available
-	`, item.ID, item.UserID, item.Name, item.Description, item.Category, item.Available).Scan(
-		&item.ID, &item.UserID, &item.Name, &item.Description, &item.Category, &item.Available,
+		RETURNING id, user_id, name, description, category, match_tags, available
+	`, item.ID, item.UserID, item.Name, item.Description, item.Category, item.MatchTags, item.Available).Scan(
+		&item.ID, &item.UserID, &item.Name, &item.Description, &item.Category, &item.MatchTags, &item.Available,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -160,6 +170,68 @@ func (r *ProfileRepository) DeleteItem(ctx context.Context, userID, itemID strin
 		return repository.ErrNotFound
 	}
 	return nil
+}
+
+func (r *ProfileRepository) GetAccountMediaPaths(ctx context.Context, userID string) (entity.AccountMediaPaths, error) {
+	media := entity.AccountMediaPaths{}
+
+	err := r.postgres.Pool().QueryRow(ctx, `
+		SELECT COALESCE(avatar_url, '')
+		FROM users
+		WHERE id = $1
+	`, userID).Scan(&media.AvatarURL)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return entity.AccountMediaPaths{}, repository.ErrNotFound
+		}
+		return entity.AccountMediaPaths{}, fmt.Errorf("get avatar url: %w", err)
+	}
+
+	postImageRows, err := r.postgres.Pool().Query(ctx, `
+		SELECT image_url
+		FROM posts
+		WHERE user_id = $1
+		  AND COALESCE(image_url, '') <> ''
+	`, userID)
+	if err != nil {
+		return entity.AccountMediaPaths{}, fmt.Errorf("query post images: %w", err)
+	}
+	defer postImageRows.Close()
+
+	for postImageRows.Next() {
+		var imageURL string
+		if err := postImageRows.Scan(&imageURL); err != nil {
+			return entity.AccountMediaPaths{}, fmt.Errorf("scan post image: %w", err)
+		}
+		media.PostImageURLs = append(media.PostImageURLs, imageURL)
+	}
+	if err := postImageRows.Err(); err != nil {
+		return entity.AccountMediaPaths{}, fmt.Errorf("iterate post images: %w", err)
+	}
+
+	messageImageRows, err := r.postgres.Pool().Query(ctx, `
+		SELECT image_url
+		FROM messages
+		WHERE sender_id = $1
+		  AND COALESCE(image_url, '') <> ''
+	`, userID)
+	if err != nil {
+		return entity.AccountMediaPaths{}, fmt.Errorf("query message images: %w", err)
+	}
+	defer messageImageRows.Close()
+
+	for messageImageRows.Next() {
+		var imageURL string
+		if err := messageImageRows.Scan(&imageURL); err != nil {
+			return entity.AccountMediaPaths{}, fmt.Errorf("scan message image: %w", err)
+		}
+		media.MessageImageURLs = append(media.MessageImageURLs, imageURL)
+	}
+	if err := messageImageRows.Err(); err != nil {
+		return entity.AccountMediaPaths{}, fmt.Errorf("iterate message images: %w", err)
+	}
+
+	return media, nil
 }
 
 func (r *ProfileRepository) DeleteAccount(ctx context.Context, userID string) error {
@@ -195,7 +267,7 @@ func (r *ProfileRepository) listSkills(ctx context.Context, userID string) ([]st
 
 func (r *ProfileRepository) listItems(ctx context.Context, userID string) ([]entity.ProfileItem, error) {
 	rows, err := r.postgres.Pool().Query(ctx, `
-		SELECT id, user_id, name, description, category, available
+		SELECT id, user_id, name, description, category, match_tags, available
 		FROM user_items
 		WHERE user_id = $1
 		ORDER BY created_at
@@ -208,7 +280,7 @@ func (r *ProfileRepository) listItems(ctx context.Context, userID string) ([]ent
 	var items []entity.ProfileItem
 	for rows.Next() {
 		var item entity.ProfileItem
-		if err := rows.Scan(&item.ID, &item.UserID, &item.Name, &item.Description, &item.Category, &item.Available); err != nil {
+		if err := rows.Scan(&item.ID, &item.UserID, &item.Name, &item.Description, &item.Category, &item.MatchTags, &item.Available); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

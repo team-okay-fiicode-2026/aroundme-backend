@@ -22,5 +22,12 @@ type ProfileItem struct {
 	Name        string
 	Description string
 	Category    string
+	MatchTags   []string
 	Available   bool
+}
+
+type AccountMediaPaths struct {
+	AvatarURL        string
+	MessageImageURLs []string
+	PostImageURLs    []string
 }
