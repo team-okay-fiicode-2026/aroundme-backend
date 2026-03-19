@@ -40,12 +40,18 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	authRepository := postgresrepository.NewAuthRepository(postgres)
 	profileRepository := postgresrepository.NewProfileRepository(postgres)
 	postRepository := postgresrepository.NewPostRepository(postgres)
+	messageRepository := postgresrepository.NewMessageRepository(postgres)
 
 	postStreamHub := deliveryhttp.NewPostStreamHub()
+	messageStreamHub := deliveryhttp.NewMessageStreamHub()
 
 	postImageStore, err := storage.NewLocalImageStore(cfg.UploadsDir, "posts", "post", 10<<20)
 	if err != nil {
 		return nil, fmt.Errorf("create post image store: %w", err)
+	}
+	messageImageStore, err := storage.NewLocalImageStore(cfg.UploadsDir, "messages", "msg", 10<<20)
+	if err != nil {
+		return nil, fmt.Errorf("create message image store: %w", err)
 	}
 	avatarImageStore, err := storage.NewLocalImageStore(cfg.UploadsDir, "avatars", "avatar", 5<<20)
 	if err != nil {
@@ -59,6 +65,7 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	})
 	profileUseCase := usecase.NewProfileUseCase(profileRepository, authRepository, nil)
 	postUseCase := usecase.NewPostUseCase(postRepository, nil, postStreamHub, nil)
+	messageUseCase := usecase.NewMessageUseCase(messageRepository, messageStreamHub, nil)
 
 	app := fiber.New(fiber.Config{
 		AppName:       "aroundme-backend",
@@ -75,7 +82,7 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	}))
 	app.Static("/uploads", cfg.UploadsDir)
 
-	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, avatarImageStore, postgres)
+	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, postgres)
 
 	return &Application{
 		Config:   cfg,

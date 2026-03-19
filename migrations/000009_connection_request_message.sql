@@ -1,0 +1,1 @@
+ALTER TABLE friend_requests ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT '';
