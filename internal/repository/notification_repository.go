@@ -16,10 +16,6 @@ type NotificationRepository interface {
 	// ListNearbyUserIDs returns IDs of users who have a location set within radiusKm of the given point,
 	// excluding the user with excludeUserID.
 	ListNearbyUserIDs(ctx context.Context, latitude, longitude, radiusKm float64, excludeUserID string) ([]string, error)
-	// ListNearbyUsersForSkillMatch returns nearby users whose skills or available items overlap with the provided tags.
-	// Each user's own distance_limit_km is used as the notification radius, so the radius is per-user.
-	// Quiet-hours fields are included so the caller can suppress the push without a second query.
-	ListNearbyUsersForSkillMatch(ctx context.Context, latitude, longitude float64, tags []string, excludeUserID string) ([]entity.NearbySkillUser, error)
 	// GetPostInfo returns the author user ID and title for the given post.
 	GetPostInfo(ctx context.Context, postID string) (authorID, title string, err error)
 }

@@ -17,7 +17,6 @@ const (
 	notifTypeComment      = "post.comment"
 	notifTypeDirectMsg    = "message.direct"
 	notifTypeGroupMsg     = "message.group"
-	notifTypeSkillMatch   = "post.skill_match"
 	emergencyNotifyRadius = 5.0 // km
 	notificationListLimit = 50
 )
@@ -36,10 +35,6 @@ type NotificationUseCase interface {
 type PostNotifier interface {
 	NotifyEmergencyPost(ctx context.Context, post entity.Post)
 	NotifyNewComment(ctx context.Context, postID, commenterID, commenterName string)
-	// NotifySkillMatchPost finds nearby users whose skills overlap with the post's
-	// tags and sends them a "Hero Alert". Quiet hours suppress the push but the
-	// in-app notification is always stored.
-	NotifySkillMatchPost(ctx context.Context, post entity.Post)
 }
 
 // MessageNotifier is called by the message usecase to trigger notifications.
@@ -63,7 +58,6 @@ type noopPostNotifier struct{}
 
 func (noopPostNotifier) NotifyEmergencyPost(context.Context, entity.Post)         {}
 func (noopPostNotifier) NotifyNewComment(context.Context, string, string, string) {}
-func (noopPostNotifier) NotifySkillMatchPost(context.Context, entity.Post)        {}
 
 type noopMessageNotifier struct{}
 
@@ -202,51 +196,6 @@ func (s *notificationService) NotifyNewComment(ctx context.Context, postID, comm
 		Notification: &resp,
 	})
 	s.sendPush(ctx, authorID, title, body, map[string]string{"type": notifTypeComment, "entityId": postID})
-}
-
-// NotifySkillMatchPost sends a "Hero Alert" to nearby users whose skills or
-// available items match the post's tags. The in-app notification is always created; the Expo push is
-// skipped only if the recipient is currently in their quiet-hours window.
-func (s *notificationService) NotifySkillMatchPost(ctx context.Context, post entity.Post) {
-	if len(post.Tags) == 0 {
-		return
-	}
-
-	users, err := s.repo.ListNearbyUsersForSkillMatch(ctx, post.Latitude, post.Longitude, post.Tags, post.UserID)
-	if err != nil || len(users) == 0 {
-		return
-	}
-
-	title := "A nearby post matches what you offer"
-	body := post.Title
-	if post.LocationName != "" {
-		body = post.Title + " — " + post.LocationName
-	}
-
-	for _, u := range users {
-		n, err := s.repo.Create(ctx, entity.Notification{
-			UserID:   u.UserID,
-			Type:     notifTypeSkillMatch,
-			Title:    title,
-			Body:     body,
-			EntityID: post.ID,
-		})
-		if err != nil {
-			continue
-		}
-		resp := toNotificationResponse(n)
-		s.stream.PublishToUser(u.UserID, model.NotificationStreamEvent{
-			Type:         "notification.new",
-			Notification: &resp,
-		})
-		// Respect the user's quiet-hours window: save the notification but skip push.
-		if !isInQuietHours(u.QuietHoursStart, u.QuietHoursEnd) {
-			s.sendPush(ctx, u.UserID, title, body, map[string]string{
-				"type":     notifTypeSkillMatch,
-				"entityId": post.ID,
-			})
-		}
-	}
 }
 
 // isInQuietHours returns true when the current local time falls inside the

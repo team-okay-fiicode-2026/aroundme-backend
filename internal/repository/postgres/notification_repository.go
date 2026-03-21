@@ -147,62 +147,6 @@ func (r *NotificationRepository) ListNearbyUserIDs(ctx context.Context, latitude
 	return ids, rows.Err()
 }
 
-func (r *NotificationRepository) ListNearbyUsersForSkillMatch(ctx context.Context, latitude, longitude float64, tags []string, excludeUserID string) ([]entity.NearbySkillUser, error) {
-	if len(tags) == 0 {
-		return nil, nil
-	}
-
-	// One query: filter by each user's own distance_limit_km and keep anyone whose
-	// normalized skills or available item tags overlap with the post tags.
-	// DISTINCT ON ensures each user appears once even if multiple labels match.
-	rows, err := r.postgres.Pool().Query(ctx, `
-		SELECT DISTINCT ON (u.id)
-			u.id,
-			u.quiet_hours_start::text,
-			u.quiet_hours_end::text
-		FROM users u
-		WHERE u.id          != $1
-		  AND u.latitude    IS NOT NULL
-		  AND u.longitude   IS NOT NULL
-		  AND (
-		    EXISTS (
-		      SELECT 1
-		      FROM user_skills us
-		      WHERE us.user_id = u.id
-		        AND us.tag = ANY($2)
-		    )
-		    OR EXISTS (
-		      SELECT 1
-		      FROM user_items ui
-		      WHERE ui.user_id = u.id
-		        AND ui.available = true
-		        AND ui.match_tags && $2::text[]
-		    )
-		  )
-		  AND (
-		    6371 * 2 * ASIN(SQRT(
-		      POWER(SIN(RADIANS((u.latitude  - $3) / 2)), 2) +
-		      COS(RADIANS($3)) * COS(RADIANS(u.latitude)) *
-		      POWER(SIN(RADIANS((u.longitude - $4) / 2)), 2)
-		    ))
-		  ) <= u.distance_limit_km
-	`, excludeUserID, tags, latitude, longitude)
-	if err != nil {
-		return nil, fmt.Errorf("list nearby skill users: %w", err)
-	}
-	defer rows.Close()
-
-	var users []entity.NearbySkillUser
-	for rows.Next() {
-		var u entity.NearbySkillUser
-		if err := rows.Scan(&u.UserID, &u.QuietHoursStart, &u.QuietHoursEnd); err != nil {
-			return nil, fmt.Errorf("scan skill user: %w", err)
-		}
-		users = append(users, u)
-	}
-	return users, rows.Err()
-}
-
 func (r *NotificationRepository) GetPostInfo(ctx context.Context, postID string) (string, string, error) {
 	var authorID, title string
 	err := r.postgres.Pool().QueryRow(ctx, `

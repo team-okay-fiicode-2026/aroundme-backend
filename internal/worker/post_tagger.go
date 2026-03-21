@@ -7,7 +7,6 @@ import (
 
 	"github.com/aroundme/aroundme-backend/internal/platform/ai"
 	"github.com/aroundme/aroundme-backend/internal/repository"
-	"github.com/aroundme/aroundme-backend/internal/usecase"
 )
 
 const (
@@ -15,22 +14,18 @@ const (
 	taggerBatchSize    = 20
 )
 
-// PostTaggerWorker polls for untagged posts, enriches their tags via Claude,
-// then triggers skill-match notifications for matched users.
+// PostTaggerWorker polls for untagged posts and enriches their tags via Claude.
 type PostTaggerWorker struct {
 	postRepo repository.PostRepository
-	notifier usecase.PostNotifier
 	tagger   ai.Tagger
 }
 
 func NewPostTaggerWorker(
 	postRepo repository.PostRepository,
-	notifier usecase.PostNotifier,
 	tagger ai.Tagger,
 ) *PostTaggerWorker {
 	return &PostTaggerWorker{
 		postRepo: postRepo,
-		notifier: notifier,
 		tagger:   tagger,
 	}
 }
@@ -66,8 +61,6 @@ func (w *PostTaggerWorker) processBatch(ctx context.Context) {
 		aiTags, err := w.tagger.ExtractTags(ctx, post.Title, post.Body)
 		if err != nil {
 			log.Printf("post_tagger: extract tags for post %s: %v — using existing tags", post.ID, err)
-			// Notifications still fire with the rule-based tags already on the post.
-			go w.notifier.NotifySkillMatchPost(context.Background(), post)
 			continue
 		}
 
@@ -75,9 +68,6 @@ func (w *PostTaggerWorker) processBatch(ctx context.Context) {
 		if err := w.postRepo.UpdateAITags(ctx, post.ID, merged); err != nil {
 			log.Printf("post_tagger: update tags for post %s: %v", post.ID, err)
 		}
-
-		post.Tags = merged
-		go w.notifier.NotifySkillMatchPost(context.Background(), post)
 	}
 }
 

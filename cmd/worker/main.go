@@ -9,9 +9,7 @@ import (
 	"github.com/aroundme/aroundme-backend/internal/config"
 	"github.com/aroundme/aroundme-backend/internal/platform/ai"
 	"github.com/aroundme/aroundme-backend/internal/platform/database"
-	"github.com/aroundme/aroundme-backend/internal/platform/push"
 	postgresrepository "github.com/aroundme/aroundme-backend/internal/repository/postgres"
-	"github.com/aroundme/aroundme-backend/internal/usecase"
 	"github.com/aroundme/aroundme-backend/internal/worker"
 )
 
@@ -34,15 +32,10 @@ func main() {
 	defer postgres.Close()
 
 	postRepository := postgresrepository.NewPostRepository(postgres)
-	notificationRepository := postgresrepository.NewNotificationRepository(postgres)
-
-	// nil stream publisher: the notification service falls back to its noop implementation.
-	expoPusher := push.NewExpoClient(cfg.ExpoPushAccessToken)
-	notificationService := usecase.NewNotificationService(notificationRepository, nil, expoPusher)
 
 	tagger := ai.NewClaudeTagger(cfg.AnthropicAPIKey)
 
-	w := worker.NewPostTaggerWorker(postRepository, notificationService, tagger)
+	w := worker.NewPostTaggerWorker(postRepository, tagger)
 	log.Println("AI post tagger worker started")
 	w.Run(ctx)
 	log.Println("AI post tagger worker stopped")
