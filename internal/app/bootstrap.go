@@ -12,6 +12,7 @@ import (
 	deliveryhttp "github.com/aroundme/aroundme-backend/internal/delivery/http"
 	"github.com/aroundme/aroundme-backend/internal/platform/database"
 	"github.com/aroundme/aroundme-backend/internal/platform/push"
+	"github.com/aroundme/aroundme-backend/internal/platform/queue"
 	"github.com/aroundme/aroundme-backend/internal/platform/storage"
 	postgresrepository "github.com/aroundme/aroundme-backend/internal/repository/postgres"
 	"github.com/aroundme/aroundme-backend/internal/usecase"
@@ -73,7 +74,7 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	notificationService := usecase.NewNotificationService(notificationRepository, notificationStreamHub, expoPusher)
 
 	trustService := usecase.NewTrustUseCase(trustRepository)
-	postUseCase := usecase.NewPostUseCase(postRepository, trustRepository, postStreamHub, notificationService)
+	postUseCase := usecase.NewPostUseCase(postRepository, trustRepository, postStreamHub, queue.NoopPostQueuePublisher{}, notificationService)
 	messageUseCase := usecase.NewMessageUseCase(messageRepository, messageStreamHub, notificationService)
 
 	app := fiber.New(fiber.Config{

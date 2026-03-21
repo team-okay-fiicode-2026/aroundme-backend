@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"unicode/utf8"
 
@@ -48,10 +49,21 @@ type noopPostEventPublisher struct{}
 
 func (noopPostEventPublisher) Publish(model.PostStreamEvent) {}
 
+// PostQueuePublisher publishes a post-created event to the async queue
+// so downstream agents can process it independently.
+type PostQueuePublisher interface {
+	PublishNewPost(ctx context.Context, postID string) error
+}
+
+type noopPostQueuePublisher struct{}
+
+func (noopPostQueuePublisher) PublishNewPost(context.Context, string) error { return nil }
+
 type postUseCase struct {
 	postRepository  repository.PostRepository
 	trustRepository repository.TrustRepository
 	publisher       PostEventPublisher
+	queuePublisher  PostQueuePublisher
 	notifier        PostNotifier
 }
 
@@ -59,10 +71,14 @@ func NewPostUseCase(
 	postRepository repository.PostRepository,
 	trustRepository repository.TrustRepository,
 	publisher PostEventPublisher,
+	queuePublisher PostQueuePublisher,
 	notifier PostNotifier,
 ) PostUseCase {
 	if publisher == nil {
 		publisher = noopPostEventPublisher{}
+	}
+	if queuePublisher == nil {
+		queuePublisher = noopPostQueuePublisher{}
 	}
 	if notifier == nil {
 		notifier = noopPostNotifier{}
@@ -72,6 +88,7 @@ func NewPostUseCase(
 		postRepository:  postRepository,
 		trustRepository: trustRepository,
 		publisher:       publisher,
+		queuePublisher:  queuePublisher,
 		notifier:        notifier,
 	}
 }
@@ -202,6 +219,10 @@ func (u *postUseCase) CreatePost(ctx context.Context, userID string, input model
 		Type:   postCreatedEventType,
 		PostID: post.ID,
 	})
+
+	if err := u.queuePublisher.PublishNewPost(ctx, post.ID); err != nil {
+		log.Printf("post_usecase: publish new post %s to queue: %v", post.ID, err)
+	}
 
 	if post.Kind == entity.PostKindEmergency {
 		go u.notifier.NotifyEmergencyPost(context.Background(), post)
