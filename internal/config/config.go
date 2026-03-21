@@ -20,6 +20,7 @@ type Config struct {
 	AllowDevSocialAuth    bool
 	ExpoPushAccessToken   string
 	AnthropicAPIKey       string
+	SQSQueueURL           string
 }
 
 func Load() (Config, error) {
@@ -39,6 +40,7 @@ func Load() (Config, error) {
 		AllowDevSocialAuth:    getEnvBool("ALLOW_DEV_SOCIAL_AUTH", false),
 		ExpoPushAccessToken:   getEnv("EXPO_PUSH_ACCESS_TOKEN", ""),
 		AnthropicAPIKey:       getEnv("ANTHROPIC_API_KEY", ""),
+		SQSQueueURL:           getEnv("SQS_QUEUE_URL", ""),
 	}
 
 	if cfg.DatabaseURL == "" {

@@ -74,7 +74,17 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	notificationService := usecase.NewNotificationService(notificationRepository, notificationStreamHub, expoPusher)
 
 	trustService := usecase.NewTrustUseCase(trustRepository)
-	postUseCase := usecase.NewPostUseCase(postRepository, trustRepository, postStreamHub, queue.NoopPostQueuePublisher{}, notificationService)
+
+	var queuePublisher usecase.PostQueuePublisher = queue.NoopPostQueuePublisher{}
+	if cfg.SQSQueueURL != "" {
+		sqsPublisher, err := queue.NewSQSPostQueuePublisher(ctx, cfg.SQSQueueURL)
+		if err != nil {
+			return nil, fmt.Errorf("create sqs publisher: %w", err)
+		}
+		queuePublisher = sqsPublisher
+	}
+
+	postUseCase := usecase.NewPostUseCase(postRepository, trustRepository, postStreamHub, queuePublisher, notificationService)
 	messageUseCase := usecase.NewMessageUseCase(messageRepository, messageStreamHub, notificationService)
 
 	app := fiber.New(fiber.Config{
