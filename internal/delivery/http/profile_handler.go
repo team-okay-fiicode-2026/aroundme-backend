@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"errors"
+	"mime/multipart"
 	stdhttp "net/http"
 	"time"
 
@@ -13,12 +14,30 @@ import (
 	"github.com/aroundme/aroundme-backend/internal/usecase"
 )
 
-type ProfileHandler struct {
-	profileUseCase usecase.ProfileUseCase
+type AvatarImageStore interface {
+	Save(file *multipart.FileHeader) (string, error)
+	Delete(publicPath string) error
 }
 
-func NewProfileHandler(profileUseCase usecase.ProfileUseCase) *ProfileHandler {
-	return &ProfileHandler{profileUseCase: profileUseCase}
+type ProfileHandler struct {
+	profileUseCase   usecase.ProfileUseCase
+	avatarImageStore AvatarImageStore
+	postImageStore   PostImageStore
+	messageImageStore MessageImageStore
+}
+
+func NewProfileHandler(
+	profileUseCase usecase.ProfileUseCase,
+	avatarImageStore AvatarImageStore,
+	postImageStore PostImageStore,
+	messageImageStore MessageImageStore,
+) *ProfileHandler {
+	return &ProfileHandler{
+		profileUseCase:   profileUseCase,
+		avatarImageStore: avatarImageStore,
+		postImageStore:   postImageStore,
+		messageImageStore: messageImageStore,
+	}
 }
 
 func (h *ProfileHandler) Register(app fiber.Router) {
@@ -29,6 +48,10 @@ func (h *ProfileHandler) Register(app fiber.Router) {
 	app.Post("/items", h.createItem)
 	app.Patch("/items/:id", h.updateItem)
 	app.Delete("/items/:id", h.deleteItem)
+}
+
+func (h *ProfileHandler) RegisterPublic(app fiber.Router) {
+	app.Get("/:id", h.getPublicProfile)
 }
 
 func (h *ProfileHandler) getProfile(c *fiber.Ctx) error {
@@ -69,14 +92,46 @@ func (h *ProfileHandler) updateProfile(c *fiber.Ctx) error {
 func (h *ProfileHandler) deleteAccount(c *fiber.Ctx) error {
 	user := GetAuthUser(c)
 
+	var input model.DeleteAccountInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(stdhttp.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid request body",
+		})
+	}
+
 	ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
 	defer cancel()
 
-	if err := h.profileUseCase.DeleteAccount(ctx, user.ID); err != nil {
+	media, err := h.profileUseCase.DeleteAccount(ctx, user.ID, input)
+	if err != nil {
 		return writeProfileError(c, err)
 	}
 
+	if media.AvatarURL != "" {
+		_ = h.avatarImageStore.Delete(media.AvatarURL)
+	}
+	for _, url := range media.PostImageURLs {
+		_ = h.postImageStore.Delete(url)
+	}
+	for _, url := range media.MessageImageURLs {
+		_ = h.messageImageStore.Delete(url)
+	}
+
 	return c.SendStatus(stdhttp.StatusNoContent)
+}
+
+func (h *ProfileHandler) getPublicProfile(c *fiber.Ctx) error {
+	userID := c.Params("id")
+
+	ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
+	defer cancel()
+
+	profile, err := h.profileUseCase.GetProfile(ctx, userID)
+	if err != nil {
+		return writeProfileError(c, err)
+	}
+
+	return c.JSON(presentProfile(profile))
 }
 
 func (h *ProfileHandler) setSkills(c *fiber.Ctx) error {
