@@ -10,6 +10,16 @@ const (
 	PostKindEvent     PostKind = "event"
 )
 
+type PostCategory string
+
+const (
+	PostCategoryUncategorized PostCategory = "uncategorized"
+	PostCategoryEmergency     PostCategory = "emergency"
+	PostCategorySkill         PostCategory = "skill"
+	PostCategoryItem          PostCategory = "item"
+	PostCategoryCommunity     PostCategory = "community"
+)
+
 type PostStatus string
 
 const (
@@ -22,6 +32,7 @@ type Post struct {
 	UserID        string
 	AuthorName    string
 	Kind          PostKind
+	Category      PostCategory
 	Status        PostStatus
 	Title         string
 	Excerpt       string
@@ -74,7 +85,7 @@ type ListPostsInput struct {
 	ViewerUserID string
 	AuthorID     *string
 	DistanceKm   *float64
-	Kind         *PostKind
+	Category     *PostCategory
 	Status       *PostStatus
 	Cursor       *PostCursor
 	Limit        int

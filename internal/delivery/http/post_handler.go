@@ -89,6 +89,7 @@ type listCommentsResponse struct {
 
 type createPostRequest struct {
 	Kind          string   `json:"kind"`
+	Category      string   `json:"category"`
 	Title         string   `json:"title"`
 	Body          string   `json:"body"`
 	LocationName  string   `json:"locationName"`
@@ -169,7 +170,7 @@ func (h *PostHandler) listPosts(c *fiber.Ctx) error {
 	result, err := h.postUseCase.ListPosts(ctx, user.ID, model.ListPostsInput{
 		AuthorID:   authorID,
 		DistanceKm: distanceKm,
-		Kind:       c.Query("kind"),
+		Kind:       firstNonEmpty(c.Query("kind"), c.Query("category")),
 		Status:     c.Query("status"),
 		Cursor:     c.Query("cursor"),
 		Limit:      parseOptionalIntQuery(c, "limit"),
@@ -234,7 +235,7 @@ func (h *PostHandler) createPost(c *fiber.Ctx) error {
 	}
 
 	post, err := h.postUseCase.CreatePost(ctx, user.ID, model.CreatePostInput{
-		Kind:          request.Kind,
+		Kind:          firstNonEmpty(request.Kind, request.Category),
 		Title:         request.Title,
 		Body:          request.Body,
 		LocationName:  request.LocationName,
@@ -270,7 +271,7 @@ func (h *PostHandler) parseCreatePostRequest(c *fiber.Ctx) (createPostRequest, s
 
 func (h *PostHandler) parseMultipartCreatePostRequest(c *fiber.Ctx) (createPostRequest, string, error) {
 	request := createPostRequest{
-		Kind:         c.FormValue("kind"),
+		Kind:         firstNonEmpty(c.FormValue("kind"), c.FormValue("category")),
 		Title:        c.FormValue("title"),
 		Body:         c.FormValue("body"),
 		LocationName: c.FormValue("locationName"),
@@ -622,4 +623,13 @@ func parseOptionalIntQuery(c *fiber.Ctx, key string) int {
 	}
 
 	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

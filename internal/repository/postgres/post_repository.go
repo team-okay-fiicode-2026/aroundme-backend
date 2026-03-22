@@ -73,9 +73,9 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 		args = append(args, *input.AuthorID)
 	}
 
-	if input.Kind != nil {
-		where = append(where, fmt.Sprintf("p.kind = $%d", len(args)+1))
-		args = append(args, *input.Kind)
+	if input.Category != nil {
+		where = append(where, fmt.Sprintf("p.category = $%d", len(args)+1))
+		args = append(args, *input.Category)
 	}
 
 	if input.Status != nil {
@@ -112,6 +112,7 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 			p.user_id,
 			u.name,
 			p.kind,
+			p.category,
 			p.status,
 			p.title,
 			p.excerpt,
@@ -153,6 +154,7 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 			&post.UserID,
 			&post.AuthorName,
 			&post.Kind,
+			&post.Category,
 			&post.Status,
 			&post.Title,
 			&post.Excerpt,
@@ -216,6 +218,7 @@ func (r *PostRepository) GetPost(ctx context.Context, viewerUserID, postID strin
 			p.user_id,
 			u.name,
 			p.kind,
+			p.category,
 			p.status,
 			p.title,
 			p.excerpt,
@@ -247,6 +250,7 @@ func (r *PostRepository) GetPost(ctx context.Context, viewerUserID, postID strin
 		&post.UserID,
 		&post.AuthorName,
 		&post.Kind,
+		&post.Category,
 		&post.Status,
 		&post.Title,
 		&post.Excerpt,
@@ -280,6 +284,7 @@ func (r *PostRepository) CreatePost(ctx context.Context, post entity.Post) (enti
 		INSERT INTO posts (
 			user_id,
 			kind,
+			category,
 			status,
 			title,
 			excerpt,
@@ -291,9 +296,9 @@ func (r *PostRepository) CreatePost(ctx context.Context, post entity.Post) (enti
 			image_url,
 			tags
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULLIF($11, ''), $12)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULLIF($12, ''), $13)
 		RETURNING id
-	`, post.UserID, post.Kind, post.Status, post.Title, post.Excerpt, post.Body, post.LocationName, post.Latitude, post.Longitude, post.ShareLocation, post.ImageURL, post.Tags).Scan(&postID)
+	`, post.UserID, post.Kind, post.Category, post.Status, post.Title, post.Excerpt, post.Body, post.LocationName, post.Latitude, post.Longitude, post.ShareLocation, post.ImageURL, post.Tags).Scan(&postID)
 	if err != nil {
 		return entity.Post{}, fmt.Errorf("insert post: %w", err)
 	}
@@ -771,4 +776,3 @@ func (r *PostRepository) UpdateAITags(ctx context.Context, postID string, tags [
 	`, postID, tags)
 	return err
 }
-

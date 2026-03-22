@@ -27,14 +27,14 @@ func (r *ProfileRepository) GetProfile(ctx context.Context, userID string) (enti
 		SELECT id, email, name, COALESCE(avatar_url, ''), bio,
 		       latitude, longitude, neighborhood_radius_km,
 		       quiet_hours_start::text, quiet_hours_end::text,
-		       distance_limit_km
+		       distance_limit_km, trust_score
 		FROM users
 		WHERE id = $1
 	`, userID).Scan(
 		&p.ID, &p.Email, &p.Name, &p.AvatarURL, &p.Bio,
 		&p.Latitude, &p.Longitude, &p.NeighborhoodRadiusKm,
 		&p.QuietHoursStart, &p.QuietHoursEnd,
-		&p.DistanceLimitKm,
+		&p.DistanceLimitKm, &p.TrustScore,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -71,7 +71,7 @@ func (r *ProfileRepository) UpdateProfile(ctx context.Context, p entity.Profile)
 		RETURNING id, email, name, COALESCE(avatar_url, ''), bio,
 		          latitude, longitude, neighborhood_radius_km,
 		          quiet_hours_start::text, quiet_hours_end::text,
-		          distance_limit_km
+		          distance_limit_km, trust_score
 	`, p.ID, p.Name, p.Bio,
 		p.Latitude, p.Longitude,
 		p.NeighborhoodRadiusKm,
@@ -81,7 +81,7 @@ func (r *ProfileRepository) UpdateProfile(ctx context.Context, p entity.Profile)
 		&p.ID, &p.Email, &p.Name, &p.AvatarURL, &p.Bio,
 		&p.Latitude, &p.Longitude, &p.NeighborhoodRadiusKm,
 		&p.QuietHoursStart, &p.QuietHoursEnd,
-		&p.DistanceLimitKm,
+		&p.DistanceLimitKm, &p.TrustScore,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

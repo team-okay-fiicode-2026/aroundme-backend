@@ -20,9 +20,9 @@ type AvatarImageStore interface {
 }
 
 type ProfileHandler struct {
-	profileUseCase   usecase.ProfileUseCase
-	avatarImageStore AvatarImageStore
-	postImageStore   PostImageStore
+	profileUseCase    usecase.ProfileUseCase
+	avatarImageStore  AvatarImageStore
+	postImageStore    PostImageStore
 	messageImageStore MessageImageStore
 }
 
@@ -33,9 +33,9 @@ func NewProfileHandler(
 	messageImageStore MessageImageStore,
 ) *ProfileHandler {
 	return &ProfileHandler{
-		profileUseCase:   profileUseCase,
-		avatarImageStore: avatarImageStore,
-		postImageStore:   postImageStore,
+		profileUseCase:    profileUseCase,
+		avatarImageStore:  avatarImageStore,
+		postImageStore:    postImageStore,
 		messageImageStore: messageImageStore,
 	}
 }
@@ -224,16 +224,18 @@ type profileResponse struct {
 	QuietHoursStart      *string        `json:"quietHoursStart"`
 	QuietHoursEnd        *string        `json:"quietHoursEnd"`
 	DistanceLimitKm      float64        `json:"distanceLimitKm"`
+	TrustScore           int            `json:"trustScore"`
 	Skills               []string       `json:"skills"`
 	Items                []itemResponse `json:"items"`
 }
 
 type itemResponse struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Category    string `json:"category"`
-	Available   bool   `json:"available"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
+	MatchTags   []string `json:"matchTags"`
+	Available   bool     `json:"available"`
 }
 
 func presentProfile(p entity.Profile) profileResponse {
@@ -262,17 +264,24 @@ func presentProfile(p entity.Profile) profileResponse {
 		QuietHoursStart:      p.QuietHoursStart,
 		QuietHoursEnd:        p.QuietHoursEnd,
 		DistanceLimitKm:      p.DistanceLimitKm,
+		TrustScore:           p.TrustScore,
 		Skills:               skills,
 		Items:                items,
 	}
 }
 
 func presentItem(item entity.ProfileItem) itemResponse {
+	matchTags := item.MatchTags
+	if matchTags == nil {
+		matchTags = []string{}
+	}
+
 	return itemResponse{
 		ID:          item.ID,
 		Name:        item.Name,
 		Description: item.Description,
 		Category:    item.Category,
+		MatchTags:   matchTags,
 		Available:   item.Available,
 	}
 }

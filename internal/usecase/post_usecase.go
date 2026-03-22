@@ -102,7 +102,7 @@ func (u *postUseCase) ListPosts(ctx context.Context, userID string, input model.
 		distanceFilter = input.DistanceKm
 	}
 
-	kind, err := normalizePostKind(input.Kind, true)
+	category, err := normalizePostCategory(input.Kind, true)
 	if err != nil {
 		return model.ListPostsResult{}, err
 	}
@@ -123,7 +123,7 @@ func (u *postUseCase) ListPosts(ctx context.Context, userID string, input model.
 		ViewerUserID: userID,
 		AuthorID:     input.AuthorID,
 		DistanceKm:   distanceFilter,
-		Kind:         kind,
+		Category:     category,
 		Status:       status,
 		Cursor:       cursor,
 		Limit:        limit,
@@ -156,9 +156,13 @@ func (u *postUseCase) GetPost(ctx context.Context, userID, postID string) (model
 }
 
 func (u *postUseCase) CreatePost(ctx context.Context, userID string, input model.CreatePostInput) (model.PostDetail, error) {
-	kind, err := normalizePostKind(input.Kind, false)
+	category, err := normalizePostCategory(input.Kind, true)
 	if err != nil {
 		return model.PostDetail{}, err
+	}
+	if category == nil {
+		defaultCategory := entity.PostCategoryUncategorized
+		category = &defaultCategory
 	}
 
 	title := strings.TrimSpace(input.Title)
@@ -199,7 +203,8 @@ func (u *postUseCase) CreatePost(ctx context.Context, userID string, input model
 
 	post, err := u.postRepository.CreatePost(ctx, entity.Post{
 		UserID:        userID,
-		Kind:          *kind,
+		Kind:          legacyPostKindForCategory(*category),
+		Category:      *category,
 		Status:        entity.PostStatusActive,
 		Title:         title,
 		Excerpt:       buildExcerpt(body),
@@ -224,7 +229,7 @@ func (u *postUseCase) CreatePost(ctx context.Context, userID string, input model
 		log.Printf("post_usecase: publish new post %s to queue: %v", post.ID, err)
 	}
 
-	if post.Kind == entity.PostKindEmergency {
+	if post.Category == entity.PostCategoryEmergency {
 		go u.notifier.NotifyEmergencyPost(context.Background(), post)
 	}
 	// Skill-match notifications for non-emergency posts are sent by the
@@ -418,7 +423,7 @@ func toPostSummary(post entity.Post, viewerUserID string) model.PostSummary {
 		ID:      post.ID,
 		Title:   post.Title,
 		Excerpt: post.Excerpt,
-		Kind:    string(post.Kind),
+		Kind:    string(post.Category),
 		Status:  string(post.Status),
 		Author: model.PostAuthor{
 			ID:   post.UserID,
@@ -472,17 +477,41 @@ func buildExcerpt(body string) string {
 	return strings.TrimSpace(string(runes[:maxPostExcerptLength])) + "..."
 }
 
-func normalizePostKind(raw string, allowEmpty bool) (*entity.PostKind, error) {
-	normalized := entity.PostKind(strings.ToLower(strings.TrimSpace(raw)))
+func normalizePostCategory(raw string, allowEmpty bool) (*entity.PostCategory, error) {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
 	if normalized == "" && allowEmpty {
 		return nil, nil
 	}
 
 	switch normalized {
-	case entity.PostKindEmergency, entity.PostKindResource, entity.PostKindEvent:
-		return &normalized, nil
+	case string(entity.PostCategoryUncategorized):
+		category := entity.PostCategoryUncategorized
+		return &category, nil
+	case string(entity.PostCategoryEmergency):
+		category := entity.PostCategoryEmergency
+		return &category, nil
+	case string(entity.PostCategorySkill), string(entity.PostKindResource):
+		category := entity.PostCategorySkill
+		return &category, nil
+	case string(entity.PostCategoryItem):
+		category := entity.PostCategoryItem
+		return &category, nil
+	case string(entity.PostCategoryCommunity), string(entity.PostKindEvent):
+		category := entity.PostCategoryCommunity
+		return &category, nil
 	default:
-		return nil, model.ValidationError{Message: "kind must be one of emergency, resource, or event"}
+		return nil, model.ValidationError{Message: "kind must be one of uncategorized, emergency, skill, item, or community"}
+	}
+}
+
+func legacyPostKindForCategory(category entity.PostCategory) entity.PostKind {
+	switch category {
+	case entity.PostCategoryEmergency:
+		return entity.PostKindEmergency
+	case entity.PostCategoryUncategorized, entity.PostCategoryCommunity:
+		return entity.PostKindEvent
+	default:
+		return entity.PostKindResource
 	}
 }
 
