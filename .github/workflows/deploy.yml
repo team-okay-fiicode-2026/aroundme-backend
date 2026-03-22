@@ -27,12 +27,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Check ECR repository exists
+        id: check
+        run: |
+          if aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} > /dev/null 2>&1; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "ECR repository does not exist yet — run Terraform first. Skipping deploy."
+          fi
+
       - name: Log in to Amazon ECR
+        if: steps.check.outputs.ready == 'true'
         run: |
           aws ecr get-login-password --region ${{ env.AWS_REGION }} \
             | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
 
       - name: Build and push Docker image
+        if: steps.check.outputs.ready == 'true'
         id: build
         run: |
           IMAGE_TAG=${{ github.sha }}
@@ -44,6 +56,7 @@ jobs:
           echo "image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
       - name: Register new ECS task definition revision
+        if: steps.check.outputs.ready == 'true'
         id: task-def
         run: |
           CURRENT=$(aws ecs describe-task-definition \
@@ -63,6 +76,7 @@ jobs:
           echo "task_def_arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
 
       - name: Update ECS service
+        if: steps.check.outputs.ready == 'true'
         run: |
           aws ecs update-service \
             --cluster ${{ env.ECS_CLUSTER }} \
