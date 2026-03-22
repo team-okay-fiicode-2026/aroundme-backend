@@ -170,7 +170,7 @@ func (h *PostHandler) listPosts(c *fiber.Ctx) error {
 	result, err := h.postUseCase.ListPosts(ctx, user.ID, model.ListPostsInput{
 		AuthorID:   authorID,
 		DistanceKm: distanceKm,
-		Kind:       firstNonEmpty(c.Query("kind"), c.Query("category")),
+		Kind:       firstNonEmpty(c.Query("category"), c.Query("kind")),
 		Status:     c.Query("status"),
 		Cursor:     c.Query("cursor"),
 		Limit:      parseOptionalIntQuery(c, "limit"),
@@ -235,7 +235,7 @@ func (h *PostHandler) createPost(c *fiber.Ctx) error {
 	}
 
 	post, err := h.postUseCase.CreatePost(ctx, user.ID, model.CreatePostInput{
-		Kind:          firstNonEmpty(request.Kind, request.Category),
+		Kind:          firstNonEmpty(request.Category, request.Kind),
 		Title:         request.Title,
 		Body:          request.Body,
 		LocationName:  request.LocationName,
@@ -271,7 +271,7 @@ func (h *PostHandler) parseCreatePostRequest(c *fiber.Ctx) (createPostRequest, s
 
 func (h *PostHandler) parseMultipartCreatePostRequest(c *fiber.Ctx) (createPostRequest, string, error) {
 	request := createPostRequest{
-		Kind:         firstNonEmpty(c.FormValue("kind"), c.FormValue("category")),
+		Kind:         firstNonEmpty(c.FormValue("category"), c.FormValue("kind")),
 		Title:        c.FormValue("title"),
 		Body:         c.FormValue("body"),
 		LocationName: c.FormValue("locationName"),

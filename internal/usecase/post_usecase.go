@@ -500,7 +500,10 @@ func normalizePostCategory(raw string, allowEmpty bool) (*entity.PostCategory, e
 		category := entity.PostCategoryCommunity
 		return &category, nil
 	default:
-		return nil, model.ValidationError{Message: "kind must be one of uncategorized, emergency, skill, item, or community"}
+		if allowEmpty {
+			return nil, nil
+		}
+		return nil, model.ValidationError{Message: "category must be one of uncategorized, emergency, skill, item, or community"}
 	}
 }
 

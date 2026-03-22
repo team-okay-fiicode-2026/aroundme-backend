@@ -33,3 +33,15 @@ func TestNormalizePostCategoryAcceptsLegacyAliases(t *testing.T) {
 		t.Fatalf("uncategorized category = %q, want %q", got, want)
 	}
 }
+
+func TestNormalizePostCategoryIgnoresUnknownOptionalValue(t *testing.T) {
+	t.Parallel()
+
+	category, err := normalizePostCategory("help", true)
+	if err != nil {
+		t.Fatalf("normalize optional category: %v", err)
+	}
+	if category != nil {
+		t.Fatalf("optional category = %v, want nil", *category)
+	}
+}
