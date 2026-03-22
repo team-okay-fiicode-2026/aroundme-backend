@@ -1,0 +1,75 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REGISTRY: 896159010456.dkr.ecr.eu-central-1.amazonaws.com
+  ECR_REPOSITORY: aroundme-dev-backend
+  ECS_CLUSTER: aroundme-dev-cluster
+  ECS_SERVICE: aroundme-dev-backend
+  CONTAINER_NAME: backend
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} \
+            | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+
+      - name: Build and push Docker image
+        id: build
+        run: |
+          IMAGE_TAG=${{ github.sha }}
+          docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+          docker tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
+                     ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+          docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest
+          echo "image=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Register new ECS task definition revision
+        id: task-def
+        run: |
+          CURRENT=$(aws ecs describe-task-definition \
+            --task-definition aroundme-dev-backend \
+            --query 'taskDefinition' --output json)
+
+          NEW=$(echo "$CURRENT" | jq \
+            --arg IMAGE "${{ steps.build.outputs.image }}" \
+            --arg CONTAINER "${{ env.CONTAINER_NAME }}" \
+            '.containerDefinitions |= map(if .name == $CONTAINER then .image = $IMAGE else . end)
+             | {family, networkMode, requiresCompatibilities, cpu, memory,
+                taskRoleArn, executionRoleArn, containerDefinitions}')
+
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$NEW" \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "task_def_arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --task-definition ${{ steps.task-def.outputs.task_def_arn }} \
+            --force-new-deployment
+
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }}
