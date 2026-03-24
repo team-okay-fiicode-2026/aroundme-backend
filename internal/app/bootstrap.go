@@ -120,7 +120,7 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	}))
 	app.Static("/uploads", cfg.UploadsDir)
 
-	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationService, notificationStreamHub, trustService, postgres)
+	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationService, postUseCase, cfg.InternalAPIKey, cfg.Env, notificationStreamHub, trustService, postgres)
 
 	var runCtx context.Context
 	var cancel context.CancelFunc

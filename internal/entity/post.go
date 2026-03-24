@@ -15,9 +15,18 @@ type PostCategory string
 const (
 	PostCategoryUncategorized PostCategory = "uncategorized"
 	PostCategoryEmergency     PostCategory = "emergency"
-	PostCategorySkill         PostCategory = "skill"
+	PostCategoryRequest       PostCategory = "request"
+	PostCategoryOffer         PostCategory = "offer"
 	PostCategoryItem          PostCategory = "item"
-	PostCategoryCommunity     PostCategory = "community"
+	PostCategoryEvent         PostCategory = "event"
+)
+
+type PostUrgency string
+
+const (
+	PostUrgencyCritical PostUrgency = "critical"
+	PostUrgencyHigh     PostUrgency = "high"
+	PostUrgencyNormal   PostUrgency = "normal"
 )
 
 type PostStatus string
@@ -49,6 +58,25 @@ type Post struct {
 	DistanceKm    *float64
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+
+	AIPostType             PostCategory
+	AIUrgency              PostUrgency
+	AIConfidence           float64
+	AIRationale            string
+	AIClassificationStatus string
+
+	OverridePostType *PostCategory
+	OverrideUrgency  *PostUrgency
+	OverriddenAt     *time.Time
+}
+
+type PostClassificationInput struct {
+	Status     string
+	PostType   PostCategory
+	Urgency    PostUrgency
+	Confidence float64
+	Rationale  string
+	Tags       []string
 }
 
 type PostCursor struct {

@@ -25,6 +25,7 @@ type PostSummary struct {
 	Title            string
 	Excerpt          string
 	Kind             string
+	Urgency          string
 	Status           string
 	Author           PostAuthor
 	LocationName     *string

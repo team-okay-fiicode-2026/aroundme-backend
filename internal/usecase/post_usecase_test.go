@@ -9,28 +9,34 @@ import (
 func TestNormalizePostCategoryAcceptsLegacyAliases(t *testing.T) {
 	t.Parallel()
 
-	resourceCategory, err := normalizePostCategory("resource", false)
-	if err != nil {
-		t.Fatalf("normalize resource: %v", err)
-	}
-	if got, want := *resourceCategory, entity.PostCategorySkill; got != want {
-		t.Fatalf("resource category = %q, want %q", got, want)
+	cases := []struct {
+		input string
+		want  entity.PostCategory
+	}{
+		{input: "resource", want: entity.PostCategoryRequest},
+		{input: "skill", want: entity.PostCategoryRequest},
+		{input: "event", want: entity.PostCategoryEvent},
+		{input: "community", want: entity.PostCategoryEvent},
+		{input: "uncategorized", want: entity.PostCategoryUncategorized},
+		{input: "request", want: entity.PostCategoryRequest},
+		{input: "offer", want: entity.PostCategoryOffer},
+		{input: "item", want: entity.PostCategoryItem},
+		{input: "emergency", want: entity.PostCategoryEmergency},
 	}
 
-	eventCategory, err := normalizePostCategory("event", false)
-	if err != nil {
-		t.Fatalf("normalize event: %v", err)
-	}
-	if got, want := *eventCategory, entity.PostCategoryCommunity; got != want {
-		t.Fatalf("event category = %q, want %q", got, want)
-	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
 
-	uncategorizedCategory, err := normalizePostCategory("uncategorized", false)
-	if err != nil {
-		t.Fatalf("normalize uncategorized: %v", err)
-	}
-	if got, want := *uncategorizedCategory, entity.PostCategoryUncategorized; got != want {
-		t.Fatalf("uncategorized category = %q, want %q", got, want)
+			got, err := normalizePostCategory(tc.input, false)
+			if err != nil {
+				t.Fatalf("normalizePostCategory(%q): %v", tc.input, err)
+			}
+			if *got != tc.want {
+				t.Fatalf("normalizePostCategory(%q) = %q, want %q", tc.input, *got, tc.want)
+			}
+		})
 	}
 }
 

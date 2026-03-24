@@ -252,6 +252,12 @@ func (s *notificationService) NotifyEmergencyPost(ctx context.Context, post enti
 			Type:         "notification.new",
 			Notification: &resp,
 		})
+		if post.AIUrgency != entity.PostUrgencyCritical {
+			start, end, qErr := s.repo.GetQuietHours(ctx, uid)
+			if qErr == nil && isInQuietHours(start, end) {
+				continue
+			}
+		}
 		s.sendPush(ctx, uid, title, body, map[string]string{"type": notifTypeEmergency, "entityId": post.ID})
 	}
 }

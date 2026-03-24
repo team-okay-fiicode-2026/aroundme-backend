@@ -22,6 +22,7 @@ type Config struct {
 	AnthropicAPIKey       string
 	SQSQueueURL           string
 	NotificationQueueURL  string
+	InternalAPIKey        string
 }
 
 func Load() (Config, error) {
@@ -43,6 +44,7 @@ func Load() (Config, error) {
 		AnthropicAPIKey:       getEnv("ANTHROPIC_API_KEY", ""),
 		SQSQueueURL:           getEnv("SQS_QUEUE_URL", ""),
 		NotificationQueueURL:  getEnv("NOTIFICATION_QUEUE_URL", ""),
+		InternalAPIKey:        getEnv("INTERNAL_API_KEY", ""),
 	}
 
 	if cfg.DatabaseURL == "" {

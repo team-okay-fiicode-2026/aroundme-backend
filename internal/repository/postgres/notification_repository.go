@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/aroundme/aroundme-backend/internal/entity"
 	"github.com/aroundme/aroundme-backend/internal/platform/database"

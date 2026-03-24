@@ -39,6 +39,7 @@ type postSummaryResponse struct {
 	Title            string                   `json:"title"`
 	Excerpt          string                   `json:"excerpt"`
 	Kind             string                   `json:"kind"`
+	Urgency          string                   `json:"urgency"`
 	Status           string                   `json:"status"`
 	Author           postAuthorResponse       `json:"author"`
 	LocationName     *string                  `json:"locationName,omitempty"`
@@ -515,6 +516,7 @@ func presentPostSummary(post model.PostSummary) postSummaryResponse {
 		Title:   post.Title,
 		Excerpt: post.Excerpt,
 		Kind:    post.Kind,
+		Urgency: post.Urgency,
 		Status:  post.Status,
 		Author: postAuthorResponse{
 			ID:   post.Author.ID,

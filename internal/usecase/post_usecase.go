@@ -45,6 +45,10 @@ type PostUseCase interface {
 	UpdateStatus(ctx context.Context, userID, postID string, input model.UpdatePostStatusInput) (model.PostDetail, error)
 }
 
+type InternalPostUseCase interface {
+	WriteClassification(ctx context.Context, postID string, input entity.PostClassificationInput) error
+}
+
 type noopPostEventPublisher struct{}
 
 func (noopPostEventPublisher) Publish(model.PostStreamEvent) {}
@@ -73,7 +77,10 @@ func NewPostUseCase(
 	publisher PostEventPublisher,
 	queuePublisher PostQueuePublisher,
 	notifier PostNotifier,
-) PostUseCase {
+) interface {
+	PostUseCase
+	InternalPostUseCase
+} {
 	if publisher == nil {
 		publisher = noopPostEventPublisher{}
 	}
@@ -229,13 +236,38 @@ func (u *postUseCase) CreatePost(ctx context.Context, userID string, input model
 		log.Printf("post_usecase: publish new post %s to queue: %v", post.ID, err)
 	}
 
-	if post.Category == entity.PostCategoryEmergency {
-		go u.notifier.NotifyEmergencyPost(context.Background(), post)
-	}
-	// Skill-match notifications for non-emergency posts are sent by the
-	// background AI tagger worker after it enriches the post's tags.
+	// Notifications for emergency posts are triggered after the async
+	// classification callback writes urgency back to the backend.
 
 	return toPostDetail(post, userID), nil
+}
+
+func (u *postUseCase) WriteClassification(ctx context.Context, postID string, input entity.PostClassificationInput) error {
+	postID = strings.TrimSpace(postID)
+	if postID == "" {
+		return model.ValidationError{Message: "postId is required"}
+	}
+
+	post, err := u.postRepository.WriteClassification(ctx, postID, input)
+	if err != nil {
+		return fmt.Errorf("write classification: %w", err)
+	}
+
+	if input.Status == "failed" {
+		return nil
+	}
+
+	u.publisher.Publish(model.PostStreamEvent{
+		Type:   postUpdatedEventType,
+		PostID: postID,
+	})
+
+	if post.Category == entity.PostCategoryEmergency &&
+		(post.AIUrgency == entity.PostUrgencyCritical || post.AIUrgency == entity.PostUrgencyHigh) {
+		go u.notifier.NotifyEmergencyPost(context.Background(), post)
+	}
+
+	return nil
 }
 
 func (u *postUseCase) ToggleReaction(ctx context.Context, userID, postID string) (model.TogglePostReactionResult, error) {
@@ -424,6 +456,7 @@ func toPostSummary(post entity.Post, viewerUserID string) model.PostSummary {
 		Title:   post.Title,
 		Excerpt: post.Excerpt,
 		Kind:    string(post.Category),
+		Urgency: string(post.AIUrgency),
 		Status:  string(post.Status),
 		Author: model.PostAuthor{
 			ID:   post.UserID,
@@ -490,20 +523,23 @@ func normalizePostCategory(raw string, allowEmpty bool) (*entity.PostCategory, e
 	case string(entity.PostCategoryEmergency):
 		category := entity.PostCategoryEmergency
 		return &category, nil
-	case string(entity.PostCategorySkill), string(entity.PostKindResource):
-		category := entity.PostCategorySkill
+	case string(entity.PostCategoryRequest), string(entity.PostKindResource), "skill":
+		category := entity.PostCategoryRequest
+		return &category, nil
+	case string(entity.PostCategoryOffer):
+		category := entity.PostCategoryOffer
 		return &category, nil
 	case string(entity.PostCategoryItem):
 		category := entity.PostCategoryItem
 		return &category, nil
-	case string(entity.PostCategoryCommunity), string(entity.PostKindEvent):
-		category := entity.PostCategoryCommunity
+	case string(entity.PostCategoryEvent), "community":
+		category := entity.PostCategoryEvent
 		return &category, nil
 	default:
 		if allowEmpty {
 			return nil, nil
 		}
-		return nil, model.ValidationError{Message: "category must be one of uncategorized, emergency, skill, item, or community"}
+		return nil, model.ValidationError{Message: "category must be one of uncategorized, emergency, request, offer, item, or event"}
 	}
 }
 
@@ -511,7 +547,7 @@ func legacyPostKindForCategory(category entity.PostCategory) entity.PostKind {
 	switch category {
 	case entity.PostCategoryEmergency:
 		return entity.PostKindEmergency
-	case entity.PostCategoryUncategorized, entity.PostCategoryCommunity:
+	case entity.PostCategoryEvent:
 		return entity.PostKindEvent
 	default:
 		return entity.PostKindResource

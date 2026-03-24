@@ -10,6 +10,7 @@ type PostRepository interface {
 	ListPosts(ctx context.Context, input entity.ListPostsInput) ([]entity.Post, *entity.PostCursor, error)
 	GetPost(ctx context.Context, viewerUserID, postID string) (entity.Post, error)
 	CreatePost(ctx context.Context, post entity.Post) (entity.Post, error)
+	WriteClassification(ctx context.Context, postID string, input entity.PostClassificationInput) (entity.Post, error)
 	ToggleReaction(ctx context.Context, postID, userID string) (entity.PostReactionState, error)
 	ListComments(ctx context.Context, postID string, input entity.ListPostCommentsInput) ([]entity.PostComment, *entity.PostCommentCursor, error)
 	CreateComment(ctx context.Context, postID, userID string, parentID *string, body string) (entity.PostComment, int, error)

@@ -113,6 +113,9 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 			u.name,
 			p.kind,
 			p.category,
+			COALESCE(p.ai_urgency, ''),
+			COALESCE(p.ai_post_type, ''),
+			COALESCE(p.ai_classification_status, 'pending'),
 			p.status,
 			p.title,
 			p.excerpt,
@@ -149,12 +152,17 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 	posts := make([]entity.Post, 0, input.Limit+1)
 	for rows.Next() {
 		var post entity.Post
+		var aiPostType string
+		var aiUrgency string
 		if err := rows.Scan(
 			&post.ID,
 			&post.UserID,
 			&post.AuthorName,
 			&post.Kind,
 			&post.Category,
+			&aiUrgency,
+			&aiPostType,
+			&post.AIClassificationStatus,
 			&post.Status,
 			&post.Title,
 			&post.Excerpt,
@@ -174,6 +182,8 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 		); err != nil {
 			return nil, nil, fmt.Errorf("scan post: %w", err)
 		}
+		post.AIUrgency = entity.PostUrgency(aiUrgency)
+		post.AIPostType = entity.PostCategory(aiPostType)
 
 		posts = append(posts, post)
 	}
@@ -219,6 +229,9 @@ func (r *PostRepository) GetPost(ctx context.Context, viewerUserID, postID strin
 			u.name,
 			p.kind,
 			p.category,
+			COALESCE(p.ai_urgency, ''),
+			COALESCE(p.ai_post_type, ''),
+			COALESCE(p.ai_classification_status, 'pending'),
 			p.status,
 			p.title,
 			p.excerpt,
@@ -245,12 +258,17 @@ func (r *PostRepository) GetPost(ctx context.Context, viewerUserID, postID strin
 	`, distanceSelect)
 
 	var post entity.Post
+	var aiPostType string
+	var aiUrgency string
 	err = r.postgres.Pool().QueryRow(ctx, query, args...).Scan(
 		&post.ID,
 		&post.UserID,
 		&post.AuthorName,
 		&post.Kind,
 		&post.Category,
+		&aiUrgency,
+		&aiPostType,
+		&post.AIClassificationStatus,
 		&post.Status,
 		&post.Title,
 		&post.Excerpt,
@@ -274,6 +292,8 @@ func (r *PostRepository) GetPost(ctx context.Context, viewerUserID, postID strin
 		}
 		return entity.Post{}, fmt.Errorf("get post: %w", err)
 	}
+	post.AIUrgency = entity.PostUrgency(aiUrgency)
+	post.AIPostType = entity.PostCategory(aiPostType)
 
 	return post, nil
 }
@@ -304,6 +324,50 @@ func (r *PostRepository) CreatePost(ctx context.Context, post entity.Post) (enti
 	}
 
 	return r.GetPost(ctx, post.UserID, postID)
+}
+
+func (r *PostRepository) WriteClassification(ctx context.Context, postID string, input entity.PostClassificationInput) (entity.Post, error) {
+	switch input.Status {
+	case "failed":
+		result, err := r.postgres.Pool().Exec(ctx, `
+			UPDATE posts
+			SET ai_classification_status = 'failed'
+			WHERE id = $1
+		`, postID)
+		if err != nil {
+			return entity.Post{}, fmt.Errorf("mark classification failed: %w", err)
+		}
+		if result.RowsAffected() == 0 {
+			return entity.Post{}, repository.ErrNotFound
+		}
+		return entity.Post{
+			ID:                     postID,
+			AIClassificationStatus: "failed",
+		}, nil
+	case "classified":
+		result, err := r.postgres.Pool().Exec(ctx, `
+			UPDATE posts
+			SET category = $2,
+			    ai_post_type = $2,
+			    ai_urgency = $3,
+			    ai_confidence = $4,
+			    ai_rationale = $5,
+			    ai_classified_at = NOW(),
+			    ai_classification_status = 'classified',
+			    ai_tagged_at = NOW(),
+			    tags = CASE WHEN cardinality($6::text[]) > 0 THEN $6 ELSE tags END
+			WHERE id = $1
+		`, postID, input.PostType, input.Urgency, input.Confidence, input.Rationale, input.Tags)
+		if err != nil {
+			return entity.Post{}, fmt.Errorf("write classification: %w", err)
+		}
+		if result.RowsAffected() == 0 {
+			return entity.Post{}, repository.ErrNotFound
+		}
+		return r.GetPost(ctx, "", postID)
+	default:
+		return entity.Post{}, fmt.Errorf("unsupported classification status %q", input.Status)
+	}
 }
 
 func (r *PostRepository) ToggleReaction(ctx context.Context, postID, userID string) (entity.PostReactionState, error) {
@@ -655,6 +719,10 @@ func (r *PostRepository) ResolvePost(ctx context.Context, postID, userID string,
 }
 
 func (r *PostRepository) viewerOrigin(ctx context.Context, userID string) (*geoPoint, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, nil
+	}
+
 	var latitude *float64
 	var longitude *float64
 
