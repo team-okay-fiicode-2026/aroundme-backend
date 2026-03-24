@@ -19,6 +19,7 @@ func Register(
 	messageImageStore MessageImageStore,
 	avatarImageStore AvatarImageStore,
 	notificationUseCase usecase.NotificationUseCase,
+	internalNotificationUseCase usecase.InternalNotificationUseCase,
 	notificationStreamHub *NotificationStreamHub,
 	trustUseCase usecase.TrustUseCase,
 	db *database.Postgres,
@@ -31,5 +32,6 @@ func Register(
 	NewPostHandler(postUseCase, authUseCase, postStreamHub, postImageStore).Register(app.Group("/posts"))
 	NewMessageHandler(authUseCase, messageUseCase, messageStreamHub, messageImageStore).Register(app.Group("/messages"))
 	NewNotificationHandler(authUseCase, notificationUseCase, notificationStreamHub).Register(app.Group("/notifications"))
+	NewInternalNotificationHandler(internalNotificationUseCase).Register(app.Group("/internal/notifications"))
 	NewTrustHandler(trustUseCase).Register(app.Group("", AuthRequired(authUseCase)))
 }

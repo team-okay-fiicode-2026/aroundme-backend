@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/aroundme/aroundme-backend/internal/entity"
@@ -28,6 +30,10 @@ func (r *NotificationRepository) Create(ctx context.Context, n entity.Notificati
 		&n.ID, &n.UserID, &n.Type, &n.Title, &n.Body, &n.EntityID, &n.IsRead, &n.CreatedAt,
 	)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return entity.Notification{}, repository.ErrDuplicate
+		}
 		return entity.Notification{}, fmt.Errorf("create notification: %w", err)
 	}
 	return n, nil
@@ -114,6 +120,28 @@ func (r *NotificationRepository) GetPushTokens(ctx context.Context, userID strin
 		tokens = append(tokens, t)
 	}
 	return tokens, rows.Err()
+}
+
+func (r *NotificationRepository) GetQuietHours(ctx context.Context, userID string) (start, end *string, err error) {
+	var rawStart, rawEnd string
+	err = r.postgres.Pool().QueryRow(ctx, `
+		SELECT COALESCE(TO_CHAR(quiet_hours_start, 'HH24:MI'), ''), COALESCE(TO_CHAR(quiet_hours_end, 'HH24:MI'), '')
+		FROM users
+		WHERE id = $1
+	`, userID).Scan(&rawStart, &rawEnd)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil, repository.ErrNotFound
+		}
+		return nil, nil, fmt.Errorf("get quiet hours: %w", err)
+	}
+	if rawStart != "" {
+		start = &rawStart
+	}
+	if rawEnd != "" {
+		end = &rawEnd
+	}
+	return start, end, nil
 }
 
 func (r *NotificationRepository) ListNearbyUserIDs(ctx context.Context, latitude, longitude, radiusKm float64, excludeUserID string) ([]string, error) {

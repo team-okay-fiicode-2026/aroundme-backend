@@ -21,6 +21,7 @@ type Config struct {
 	ExpoPushAccessToken   string
 	AnthropicAPIKey       string
 	SQSQueueURL           string
+	NotificationQueueURL  string
 }
 
 func Load() (Config, error) {
@@ -41,6 +42,7 @@ func Load() (Config, error) {
 		ExpoPushAccessToken:   getEnv("EXPO_PUSH_ACCESS_TOKEN", ""),
 		AnthropicAPIKey:       getEnv("ANTHROPIC_API_KEY", ""),
 		SQSQueueURL:           getEnv("SQS_QUEUE_URL", ""),
+		NotificationQueueURL:  getEnv("NOTIFICATION_QUEUE_URL", ""),
 	}
 
 	if cfg.DatabaseURL == "" {

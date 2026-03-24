@@ -16,12 +16,14 @@ import (
 	"github.com/aroundme/aroundme-backend/internal/platform/storage"
 	postgresrepository "github.com/aroundme/aroundme-backend/internal/repository/postgres"
 	"github.com/aroundme/aroundme-backend/internal/usecase"
+	"github.com/aroundme/aroundme-backend/internal/worker"
 )
 
 type Application struct {
 	Config   config.Config
 	Database *database.Postgres
 	HTTP     *fiber.App
+	cancel   context.CancelFunc
 }
 
 func Bootstrap(ctx context.Context) (*Application, error) {
@@ -71,7 +73,23 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	profileUseCase := usecase.NewProfileUseCase(profileRepository, authRepository, trustRepository)
 
 	expoPusher := push.NewExpoClient(cfg.ExpoPushAccessToken)
-	notificationService := usecase.NewNotificationService(notificationRepository, notificationStreamHub, expoPusher)
+	var notificationIntentPublisher usecase.NotificationIntentPublisher = nil
+	var notificationDispatchWorker *worker.NotificationDispatchWorker
+	if cfg.NotificationQueueURL != "" {
+		intentQueue, err := queue.NewSQSNotificationIntentQueue(ctx, cfg.NotificationQueueURL)
+		if err != nil {
+			return nil, fmt.Errorf("create notification intent queue: %w", err)
+		}
+		notificationIntentPublisher = intentQueue
+	}
+	notificationService := usecase.NewNotificationService(notificationRepository, notificationStreamHub, expoPusher, notificationIntentPublisher)
+	if cfg.NotificationQueueURL != "" {
+		intentQueue, err := queue.NewSQSNotificationIntentQueue(ctx, cfg.NotificationQueueURL)
+		if err != nil {
+			return nil, fmt.Errorf("create notification dispatch queue: %w", err)
+		}
+		notificationDispatchWorker = worker.NewNotificationDispatchWorker(intentQueue, notificationService)
+	}
 
 	trustService := usecase.NewTrustUseCase(trustRepository)
 
@@ -102,16 +120,27 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	}))
 	app.Static("/uploads", cfg.UploadsDir)
 
-	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationStreamHub, trustService, postgres)
+	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationService, notificationStreamHub, trustService, postgres)
+
+	var runCtx context.Context
+	var cancel context.CancelFunc
+	if notificationDispatchWorker != nil {
+		runCtx, cancel = context.WithCancel(context.Background())
+		go notificationDispatchWorker.Run(runCtx)
+	}
 
 	return &Application{
 		Config:   cfg,
 		Database: postgres,
 		HTTP:     app,
+		cancel:   cancel,
 	}, nil
 }
 
 func (a *Application) Close() {
+	if a.cancel != nil {
+		a.cancel()
+	}
 	if a.Database != nil {
 		a.Database.Close()
 	}

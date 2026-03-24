@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -21,6 +22,8 @@ const (
 	notificationListLimit = 50
 )
 
+var errNotificationIntentPublisherNotConfigured = errors.New("notification intent publisher is not configured")
+
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
 // NotificationUseCase is what the HTTP handler uses.
@@ -29,6 +32,14 @@ type NotificationUseCase interface {
 	MarkRead(ctx context.Context, notificationID, userID string) (model.ListNotificationsResult, error)
 	MarkAllRead(ctx context.Context, userID string) error
 	RegisterPushToken(ctx context.Context, userID, token string) error
+}
+
+type InternalNotificationUseCase interface {
+	EnqueueSkillMatchNotifications(ctx context.Context, postID string, recipientUserIDs []string) error
+}
+
+type NotificationDispatchUseCase interface {
+	DispatchIntent(ctx context.Context, intent entity.NotificationIntent) error
 }
 
 // PostNotifier is called by the post usecase to trigger notifications.
@@ -52,6 +63,10 @@ type PushSender interface {
 	Send(ctx context.Context, tokens []string, title, body string, data any) error
 }
 
+type NotificationIntentPublisher interface {
+	Publish(ctx context.Context, intents []entity.NotificationIntent) error
+}
+
 // ─── Noop implementations ─────────────────────────────────────────────────────
 
 type noopPostNotifier struct{}
@@ -72,12 +87,19 @@ type noopNotificationStreamPublisher struct{}
 
 func (noopNotificationStreamPublisher) PublishToUser(string, model.NotificationStreamEvent) {}
 
+type noopNotificationIntentPublisher struct{}
+
+func (noopNotificationIntentPublisher) Publish(context.Context, []entity.NotificationIntent) error {
+	return errNotificationIntentPublisherNotConfigured
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 type notificationService struct {
-	repo      repository.NotificationRepository
-	stream    NotificationStreamPublisher
-	push      PushSender
+	repo            repository.NotificationRepository
+	stream          NotificationStreamPublisher
+	push            PushSender
+	intentPublisher NotificationIntentPublisher
 }
 
 // NewNotificationService creates a service that implements NotificationUseCase,
@@ -86,10 +108,13 @@ func NewNotificationService(
 	repo repository.NotificationRepository,
 	stream NotificationStreamPublisher,
 	push PushSender,
+	intentPublisher NotificationIntentPublisher,
 ) interface {
 	NotificationUseCase
 	PostNotifier
 	MessageNotifier
+	InternalNotificationUseCase
+	NotificationDispatchUseCase
 } {
 	if stream == nil {
 		stream = noopNotificationStreamPublisher{}
@@ -97,7 +122,10 @@ func NewNotificationService(
 	if push == nil {
 		push = noopPushSender{}
 	}
-	return &notificationService{repo: repo, stream: stream, push: push}
+	if intentPublisher == nil {
+		intentPublisher = noopNotificationIntentPublisher{}
+	}
+	return &notificationService{repo: repo, stream: stream, push: push, intentPublisher: intentPublisher}
 }
 
 // ─── NotificationUseCase ──────────────────────────────────────────────────────
@@ -135,6 +163,63 @@ func (s *notificationService) MarkAllRead(ctx context.Context, userID string) er
 
 func (s *notificationService) RegisterPushToken(ctx context.Context, userID, token string) error {
 	return s.repo.UpsertPushToken(ctx, userID, token)
+}
+
+func (s *notificationService) EnqueueSkillMatchNotifications(ctx context.Context, postID string, recipientUserIDs []string) error {
+	postID = strings.TrimSpace(postID)
+	if postID == "" {
+		return model.ValidationError{Message: "postId is required"}
+	}
+	if len(recipientUserIDs) == 0 {
+		return nil
+	}
+
+	_, postTitle, err := s.repo.GetPostInfo(ctx, postID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.ValidationError{Message: "postId is invalid"}
+		}
+		return fmt.Errorf("get post info: %w", err)
+	}
+
+	seen := make(map[string]struct{}, len(recipientUserIDs))
+	intents := make([]entity.NotificationIntent, 0, len(recipientUserIDs))
+	for _, rawUserID := range recipientUserIDs {
+		userID := strings.TrimSpace(rawUserID)
+		if userID == "" {
+			continue
+		}
+		if _, exists := seen[userID]; exists {
+			continue
+		}
+		seen[userID] = struct{}{}
+		intents = append(intents, entity.NotificationIntent{
+			UserID:            userID,
+			Type:              "skill_match",
+			Title:             "Someone nearby needs your help",
+			Body:              postTitle,
+			EntityID:          postID,
+			Data:              map[string]string{"type": "skill_match", "entityId": postID, "postId": postID},
+			RespectQuietHours: true,
+			DedupeKey:         fmt.Sprintf("skill_match:%s:%s", userID, postID),
+		})
+	}
+
+	if len(intents) == 0 {
+		return nil
+	}
+	if err := s.intentPublisher.Publish(ctx, intents); err != nil {
+		if errors.Is(err, errNotificationIntentPublisherNotConfigured) {
+			for _, intent := range intents {
+				if err := s.DispatchIntent(ctx, intent); err != nil {
+					return fmt.Errorf("dispatch notification intent inline: %w", err)
+				}
+			}
+			return nil
+		}
+		return fmt.Errorf("publish notification intents: %w", err)
+	}
+	return nil
 }
 
 // ─── PostNotifier ─────────────────────────────────────────────────────────────
@@ -265,6 +350,38 @@ func (s *notificationService) NotifyNewMessage(ctx context.Context, conversation
 		})
 		s.sendPush(ctx, uid, title, "New message", map[string]string{"type": notifType, "entityId": conversationID})
 	}
+}
+
+func (s *notificationService) DispatchIntent(ctx context.Context, intent entity.NotificationIntent) error {
+	n, err := s.repo.Create(ctx, entity.Notification{
+		UserID:   intent.UserID,
+		Type:     intent.Type,
+		Title:    intent.Title,
+		Body:     intent.Body,
+		EntityID: intent.EntityID,
+	})
+	if err != nil {
+		if errors.Is(err, repository.ErrDuplicate) {
+			return nil
+		}
+		return fmt.Errorf("create notification: %w", err)
+	}
+
+	resp := toNotificationResponse(n)
+	s.stream.PublishToUser(intent.UserID, model.NotificationStreamEvent{
+		Type:         "notification.new",
+		Notification: &resp,
+	})
+
+	if intent.RespectQuietHours {
+		start, end, err := s.repo.GetQuietHours(ctx, intent.UserID)
+		if err == nil && isInQuietHours(start, end) {
+			return nil
+		}
+	}
+
+	s.sendPush(ctx, intent.UserID, intent.Title, intent.Body, intent.Data)
+	return nil
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
