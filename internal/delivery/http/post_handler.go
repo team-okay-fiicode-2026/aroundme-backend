@@ -35,23 +35,27 @@ type listPostsResponse struct {
 }
 
 type postSummaryResponse struct {
-	ID               string                   `json:"id"`
-	Title            string                   `json:"title"`
-	Excerpt          string                   `json:"excerpt"`
-	Kind             string                   `json:"kind"`
-	Urgency          string                   `json:"urgency"`
-	Status           string                   `json:"status"`
-	Author           postAuthorResponse       `json:"author"`
-	LocationName     *string                  `json:"locationName,omitempty"`
-	Coordinates      *postCoordinatesResponse `json:"coordinates,omitempty"`
-	IsLocationShared bool                     `json:"isLocationShared"`
-	DistanceKm       *float64                 `json:"distanceKm"`
-	ReactionCount    int                      `json:"reactionCount"`
-	CommentCount     int                      `json:"commentCount"`
-	IsReacted        bool                     `json:"isReacted"`
-	Tags             []string                 `json:"tags"`
-	ImageURL         string                   `json:"imageUrl,omitempty"`
-	CreatedAt        string                   `json:"createdAt"`
+	ID                 string                   `json:"id"`
+	Title              string                   `json:"title"`
+	Excerpt            string                   `json:"excerpt"`
+	Kind               string                   `json:"kind"`
+	Urgency            string                   `json:"urgency"`
+	Status             string                   `json:"status"`
+	Author             postAuthorResponse       `json:"author"`
+	IsSystemGenerated  bool                     `json:"isSystemGenerated"`
+	SystemSource       string                   `json:"systemSource,omitempty"`
+	ExpiresAt          *string                  `json:"expiresAt,omitempty"`
+	VisibilityPriority int                      `json:"visibilityPriority"`
+	LocationName       *string                  `json:"locationName,omitempty"`
+	Coordinates        *postCoordinatesResponse `json:"coordinates,omitempty"`
+	IsLocationShared   bool                     `json:"isLocationShared"`
+	DistanceKm         *float64                 `json:"distanceKm"`
+	ReactionCount      int                      `json:"reactionCount"`
+	CommentCount       int                      `json:"commentCount"`
+	IsReacted          bool                     `json:"isReacted"`
+	Tags               []string                 `json:"tags"`
+	ImageURL           string                   `json:"imageUrl,omitempty"`
+	CreatedAt          string                   `json:"createdAt"`
 }
 
 type postDetailResponse struct {
@@ -512,12 +516,16 @@ func presentPostSummary(post model.PostSummary) postSummaryResponse {
 	}
 
 	return postSummaryResponse{
-		ID:      post.ID,
-		Title:   post.Title,
-		Excerpt: post.Excerpt,
-		Kind:    post.Kind,
-		Urgency: post.Urgency,
-		Status:  post.Status,
+		ID:                 post.ID,
+		Title:              post.Title,
+		Excerpt:            post.Excerpt,
+		Kind:               post.Kind,
+		Urgency:            post.Urgency,
+		Status:             post.Status,
+		IsSystemGenerated:  post.IsSystemGenerated,
+		SystemSource:       post.SystemSource,
+		ExpiresAt:          presentOptionalTime(post.ExpiresAt),
+		VisibilityPriority: post.VisibilityPriority,
 		Author: postAuthorResponse{
 			ID:   post.Author.ID,
 			Name: post.Author.Name,
@@ -533,6 +541,15 @@ func presentPostSummary(post model.PostSummary) postSummaryResponse {
 		ImageURL:         post.ImageURL,
 		CreatedAt:        post.CreatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func presentOptionalTime(value *time.Time) *string {
+	if value == nil {
+		return nil
+	}
+
+	formatted := value.UTC().Format(time.RFC3339)
+	return &formatted
 }
 
 func presentPostCoordinates(coordinates *model.PostCoordinates) *postCoordinatesResponse {

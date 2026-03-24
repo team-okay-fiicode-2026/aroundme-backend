@@ -15,6 +15,7 @@ import (
 
 const (
 	notifTypeEmergency    = "emergency.nearby"
+	notifTypeWeatherAlert = "weather.alert"
 	notifTypeComment      = "post.comment"
 	notifTypeDirectMsg    = "message.direct"
 	notifTypeGroupMsg     = "message.group"
@@ -36,6 +37,7 @@ type NotificationUseCase interface {
 
 type InternalNotificationUseCase interface {
 	EnqueueSkillMatchNotifications(ctx context.Context, postID string, recipientUserIDs []string) error
+	EnqueueWeatherAlertNotifications(ctx context.Context, post entity.Post, radiusKm float64) error
 }
 
 type NotificationDispatchUseCase interface {
@@ -51,6 +53,10 @@ type PostNotifier interface {
 // MessageNotifier is called by the message usecase to trigger notifications.
 type MessageNotifier interface {
 	NotifyNewMessage(ctx context.Context, conversationID, senderID, senderName, convKind, convName string, recipientIDs []string)
+}
+
+type WeatherAlertNotifier interface {
+	EnqueueWeatherAlertNotifications(ctx context.Context, post entity.Post, radiusKm float64) error
 }
 
 // NotificationStreamPublisher pushes real-time events to connected clients.
@@ -113,6 +119,7 @@ func NewNotificationService(
 	NotificationUseCase
 	PostNotifier
 	MessageNotifier
+	WeatherAlertNotifier
 	InternalNotificationUseCase
 	NotificationDispatchUseCase
 } {
@@ -218,6 +225,68 @@ func (s *notificationService) EnqueueSkillMatchNotifications(ctx context.Context
 			return nil
 		}
 		return fmt.Errorf("publish notification intents: %w", err)
+	}
+	return nil
+}
+
+func (s *notificationService) EnqueueWeatherAlertNotifications(ctx context.Context, post entity.Post, radiusKm float64) error {
+	if strings.TrimSpace(post.ID) == "" {
+		return model.ValidationError{Message: "postId is required"}
+	}
+	if radiusKm <= 0 {
+		radiusKm = emergencyNotifyRadius
+	}
+
+	userIDs, err := s.repo.ListNearbyUserIDs(ctx, post.Latitude, post.Longitude, radiusKm, "")
+	if err != nil || len(userIDs) == 0 {
+		return err
+	}
+
+	body := post.Title
+	if post.LocationName != "" {
+		body = post.Title + " — " + post.LocationName
+	}
+
+	seen := make(map[string]struct{}, len(userIDs))
+	intents := make([]entity.NotificationIntent, 0, len(userIDs))
+	for _, rawUserID := range userIDs {
+		userID := strings.TrimSpace(rawUserID)
+		if userID == "" {
+			continue
+		}
+		if _, exists := seen[userID]; exists {
+			continue
+		}
+		seen[userID] = struct{}{}
+		intents = append(intents, entity.NotificationIntent{
+			UserID:   userID,
+			Type:     notifTypeWeatherAlert,
+			Title:    "Weather alert nearby",
+			Body:     body,
+			EntityID: post.ID,
+			Data: map[string]string{
+				"type":     notifTypeWeatherAlert,
+				"entityId": post.ID,
+				"postId":   post.ID,
+			},
+			RespectQuietHours: false,
+			DedupeKey:         fmt.Sprintf("weather_alert:%s:%s", userID, post.ID),
+		})
+	}
+
+	if len(intents) == 0 {
+		return nil
+	}
+	if err := s.intentPublisher.Publish(ctx, intents); err != nil {
+		if errors.Is(err, errNotificationIntentPublisherNotConfigured) {
+			for _, intent := range intents {
+				if err := s.DispatchIntent(ctx, intent); err != nil {
+					return fmt.Errorf("dispatch weather alert notification inline: %w", err)
+				}
+			}
+			return nil
+		}
+		return fmt.Errorf("publish weather alert notifications: %w", err)
 	}
 	return nil
 }

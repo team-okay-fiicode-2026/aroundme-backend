@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/aroundme/aroundme-backend/internal/entity"
@@ -452,12 +453,16 @@ func toPostSummary(post entity.Post, viewerUserID string) model.PostSummary {
 	}
 
 	return model.PostSummary{
-		ID:      post.ID,
-		Title:   post.Title,
-		Excerpt: post.Excerpt,
-		Kind:    string(post.Category),
-		Urgency: string(post.AIUrgency),
-		Status:  string(post.Status),
+		ID:                 post.ID,
+		Title:              post.Title,
+		Excerpt:            post.Excerpt,
+		Kind:               string(post.Category),
+		Urgency:            string(post.AIUrgency),
+		Status:             string(post.Status),
+		IsSystemGenerated:  post.Origin != entity.PostOriginUser,
+		SystemSource:       postSystemSource(post.Origin),
+		ExpiresAt:          copyTime(post.ExpiresAt),
+		VisibilityPriority: post.VisibilityPriority,
 		Author: model.PostAuthor{
 			ID:   post.UserID,
 			Name: post.AuthorName,
@@ -649,4 +654,20 @@ func copyDistance(distanceKm *float64) *float64 {
 
 	value := *distanceKm
 	return &value
+}
+
+func copyTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+
+	copied := *value
+	return &copied
+}
+
+func postSystemSource(origin entity.PostOrigin) string {
+	if origin == entity.PostOriginWeatherAlert {
+		return "weather"
+	}
+	return ""
 }

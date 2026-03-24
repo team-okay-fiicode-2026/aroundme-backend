@@ -35,7 +35,12 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 
 	args := []any{input.ViewerUserID}
 	statusRankExpr := "CASE WHEN p.status = 'active' THEN 0 ELSE 1 END"
+	priorityExpr := "COALESCE(p.visibility_priority, 0)"
 	where := []string{"1=1"}
+
+	if input.Status == nil {
+		where = append(where, "NOT (p.origin = 'weather_alert' AND p.status = 'resolved')")
+	}
 
 	distanceSelect := "NULL::double precision AS distance_km"
 	var distanceExpr string
@@ -84,6 +89,8 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 	}
 
 	if input.Cursor != nil {
+		priorityPos := len(args) + 1
+		args = append(args, input.Cursor.VisibilityPriority)
 		rankPos := len(args) + 1
 		args = append(args, input.Cursor.StatusRank)
 		createdAtPos := len(args) + 1
@@ -92,7 +99,11 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 		args = append(args, input.Cursor.ID)
 
 		where = append(where, fmt.Sprintf(
-			"(%s > $%d OR (%s = $%d AND (p.created_at < $%d OR (p.created_at = $%d AND p.id < $%d))))",
+			"(%s < $%d OR (%s = $%d AND (%s > $%d OR (%s = $%d AND (p.created_at < $%d OR (p.created_at = $%d AND p.id < $%d))))))",
+			priorityExpr,
+			priorityPos,
+			priorityExpr,
+			priorityPos,
 			statusRankExpr,
 			rankPos,
 			statusRankExpr,
@@ -113,7 +124,7 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 			u.name,
 			p.kind,
 			p.category,
-			COALESCE(p.ai_urgency, ''),
+			COALESCE(p.override_urgency, p.ai_urgency, ''),
 			COALESCE(p.ai_post_type, ''),
 			COALESCE(p.ai_classification_status, 'pending'),
 			p.status,
@@ -128,6 +139,9 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 			p.tags,
 			p.reaction_count,
 			p.comment_count,
+			p.origin,
+			p.visibility_priority,
+			p.expires_at,
 			p.created_at,
 			p.updated_at,
 			EXISTS(
@@ -139,9 +153,9 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 		FROM posts p
 		JOIN users u ON u.id = p.user_id
 		WHERE %s
-		ORDER BY %s ASC, p.created_at DESC, p.id DESC
+		ORDER BY %s DESC, %s ASC, p.created_at DESC, p.id DESC
 		LIMIT $%d
-	`, distanceSelect, strings.Join(where, " AND "), statusRankExpr, limitPos)
+	`, distanceSelect, strings.Join(where, " AND "), priorityExpr, statusRankExpr, limitPos)
 
 	rows, err := r.postgres.Pool().Query(ctx, query, args...)
 	if err != nil {
@@ -175,6 +189,9 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 			&post.Tags,
 			&post.ReactionCount,
 			&post.CommentCount,
+			&post.Origin,
+			&post.VisibilityPriority,
+			&post.ExpiresAt,
 			&post.CreatedAt,
 			&post.UpdatedAt,
 			&post.IsReacted,
@@ -196,9 +213,10 @@ func (r *PostRepository) ListPosts(ctx context.Context, input entity.ListPostsIn
 	if len(posts) > input.Limit {
 		last := posts[input.Limit]
 		nextCursor = &entity.PostCursor{
-			StatusRank: statusRank(last.Status),
-			CreatedAt:  last.CreatedAt,
-			ID:         last.ID,
+			VisibilityPriority: last.VisibilityPriority,
+			StatusRank:         statusRank(last.Status),
+			CreatedAt:          last.CreatedAt,
+			ID:                 last.ID,
 		}
 		posts = posts[:input.Limit]
 	}
@@ -229,7 +247,7 @@ func (r *PostRepository) GetPost(ctx context.Context, viewerUserID, postID strin
 			u.name,
 			p.kind,
 			p.category,
-			COALESCE(p.ai_urgency, ''),
+			COALESCE(p.override_urgency, p.ai_urgency, ''),
 			COALESCE(p.ai_post_type, ''),
 			COALESCE(p.ai_classification_status, 'pending'),
 			p.status,
@@ -244,6 +262,9 @@ func (r *PostRepository) GetPost(ctx context.Context, viewerUserID, postID strin
 			p.tags,
 			p.reaction_count,
 			p.comment_count,
+			p.origin,
+			p.visibility_priority,
+			p.expires_at,
 			p.created_at,
 			p.updated_at,
 			EXISTS(
@@ -281,6 +302,9 @@ func (r *PostRepository) GetPost(ctx context.Context, viewerUserID, postID strin
 		&post.Tags,
 		&post.ReactionCount,
 		&post.CommentCount,
+		&post.Origin,
+		&post.VisibilityPriority,
+		&post.ExpiresAt,
 		&post.CreatedAt,
 		&post.UpdatedAt,
 		&post.IsReacted,

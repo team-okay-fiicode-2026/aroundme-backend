@@ -47,6 +47,8 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	messageRepository := postgresrepository.NewMessageRepository(postgres)
 	notificationRepository := postgresrepository.NewNotificationRepository(postgres)
 	trustRepository := postgresrepository.NewTrustRepository(postgres)
+	adminRepository := postgresrepository.NewAdminRepository(postgres)
+	weatherAlertRepository := postgresrepository.NewWeatherAlertRepository(postgres)
 
 	postStreamHub := deliveryhttp.NewPostStreamHub()
 	messageStreamHub := deliveryhttp.NewMessageStreamHub()
@@ -104,6 +106,8 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 
 	postUseCase := usecase.NewPostUseCase(postRepository, trustRepository, postStreamHub, queuePublisher, notificationService)
 	messageUseCase := usecase.NewMessageUseCase(messageRepository, messageStreamHub, notificationService)
+	adminUseCase := usecase.NewAdminUseCase(adminRepository)
+	weatherAlertUseCase := usecase.NewWeatherAlertUseCase(weatherAlertRepository, postStreamHub, notificationService)
 
 	app := fiber.New(fiber.Config{
 		AppName:       "aroundme-backend",
@@ -120,7 +124,7 @@ func Bootstrap(ctx context.Context) (*Application, error) {
 	}))
 	app.Static("/uploads", cfg.UploadsDir)
 
-	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationService, postUseCase, cfg.InternalAPIKey, cfg.Env, notificationStreamHub, trustService, postgres)
+	deliveryhttp.Register(app, authUseCase, profileUseCase, postUseCase, postStreamHub, postImageStore, messageUseCase, messageStreamHub, messageImageStore, avatarImageStore, notificationService, notificationService, postUseCase, adminUseCase, weatherAlertUseCase, cfg.InternalAPIKey, cfg.Env, notificationStreamHub, trustService, postgres)
 
 	var runCtx context.Context
 	var cancel context.CancelFunc

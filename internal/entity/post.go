@@ -36,28 +36,38 @@ const (
 	PostStatusResolved PostStatus = "resolved"
 )
 
+type PostOrigin string
+
+const (
+	PostOriginUser         PostOrigin = "user"
+	PostOriginWeatherAlert PostOrigin = "weather_alert"
+)
+
 type Post struct {
-	ID            string
-	UserID        string
-	AuthorName    string
-	Kind          PostKind
-	Category      PostCategory
-	Status        PostStatus
-	Title         string
-	Excerpt       string
-	Body          string
-	LocationName  string
-	Latitude      float64
-	Longitude     float64
-	ShareLocation bool
-	ImageURL      string
-	Tags          []string
-	ReactionCount int
-	CommentCount  int
-	IsReacted     bool
-	DistanceKm    *float64
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                 string
+	UserID             string
+	AuthorName         string
+	Kind               PostKind
+	Category           PostCategory
+	Status             PostStatus
+	Title              string
+	Excerpt            string
+	Body               string
+	LocationName       string
+	Latitude           float64
+	Longitude          float64
+	ShareLocation      bool
+	ImageURL           string
+	Tags               []string
+	ReactionCount      int
+	CommentCount       int
+	IsReacted          bool
+	DistanceKm         *float64
+	Origin             PostOrigin
+	ExpiresAt          *time.Time
+	VisibilityPriority int
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 
 	AIPostType             PostCategory
 	AIUrgency              PostUrgency
@@ -80,9 +90,10 @@ type PostClassificationInput struct {
 }
 
 type PostCursor struct {
-	StatusRank int       `json:"statusRank"`
-	CreatedAt  time.Time `json:"createdAt"`
-	ID         string    `json:"id"`
+	VisibilityPriority int       `json:"visibilityPriority"`
+	StatusRank         int       `json:"statusRank"`
+	CreatedAt          time.Time `json:"createdAt"`
+	ID                 string    `json:"id"`
 }
 
 type PostComment struct {

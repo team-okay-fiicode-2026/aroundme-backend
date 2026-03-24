@@ -21,23 +21,27 @@ type PostCoordinates struct {
 }
 
 type PostSummary struct {
-	ID               string
-	Title            string
-	Excerpt          string
-	Kind             string
-	Urgency          string
-	Status           string
-	Author           PostAuthor
-	LocationName     *string
-	Coordinates      *PostCoordinates
-	IsLocationShared bool
-	DistanceKm       *float64
-	ReactionCount    int
-	CommentCount     int
-	IsReacted        bool
-	Tags             []string
-	ImageURL         string
-	CreatedAt        time.Time
+	ID                 string
+	Title              string
+	Excerpt            string
+	Kind               string
+	Urgency            string
+	Status             string
+	Author             PostAuthor
+	IsSystemGenerated  bool
+	SystemSource       string
+	ExpiresAt          *time.Time
+	VisibilityPriority int
+	LocationName       *string
+	Coordinates        *PostCoordinates
+	IsLocationShared   bool
+	DistanceKm         *float64
+	ReactionCount      int
+	CommentCount       int
+	IsReacted          bool
+	Tags               []string
+	ImageURL           string
+	CreatedAt          time.Time
 }
 
 type PostDetail struct {
